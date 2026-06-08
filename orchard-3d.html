@@ -149,6 +149,39 @@ header.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom
 .harvest-proj.ready{background:#fff0c8;border-color:var(--gold);color:var(--gold-deep)}
 .harvest-proj.ready b{color:var(--gold-deep)}
 .harvest-proj.unknown{font-style:italic}
+/* care & attention */
+.section.care.overdue{outline:1.5px solid #e23b3b55;outline-offset:2px;border-radius:12px}
+.care-switch{float:right;font-size:11px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--ink-soft);display:inline-flex;align-items:center;gap:5px;cursor:pointer}
+.care-switch input{accent-color:var(--leaf);cursor:pointer}
+.care-row{display:flex;align-items:flex-end;gap:10px;margin-bottom:9px}
+.care-row .field{flex:1}
+.care-done{flex:none;border:1.5px solid var(--leaf);background:var(--leaf);color:#fff;font-weight:700;font-size:12px;border-radius:9px;padding:8px 12px;cursor:pointer;font-family:"Spline Sans",sans-serif}
+.care-done:hover{filter:brightness(1.05)}
+.care-done:disabled{opacity:.4;cursor:not-allowed;filter:grayscale(.4)}
+.care-health{margin-bottom:6px}
+.care-health .lbl{font-size:11px;color:var(--ink-soft);margin-bottom:4px}
+.care-health .lbl b{color:var(--ink)}
+.health-bar{height:8px;background:var(--paper-2);border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.health-bar i{display:block;height:100%;border-radius:6px;transition:width .3s}
+.health-bar.good i{background:linear-gradient(90deg,#3f8a43,#5fbf57)}
+.health-bar.mid i{background:linear-gradient(90deg,#d8a72a,#e8c349)}
+.health-bar.low i{background:linear-gradient(90deg,#c64545,#e26b3b)}
+.care-state{font-size:12px;font-weight:600}
+.care-state.off{color:var(--ink-soft);font-weight:500;font-style:italic}
+.care-state.ok{color:var(--ok)}
+.care-state.soon{color:var(--gold-deep)}
+.care-state.bad{color:var(--bad)}
+.section.care.disabled .care-health,.section.care.disabled .care-state.off{opacity:.7}
+#attnBanner{display:none}
+#attnBanner.show{display:block;margin:0 0 14px;background:linear-gradient(180deg,#fff4e2,#ffe9cf);border:1.5px solid var(--gold);border-radius:13px;padding:11px 14px;box-shadow:0 6px 18px -12px #c9871266}
+.attn-head{font-weight:700;font-size:13px;color:var(--clay-deep);font-family:"Fraunces",serif;margin-bottom:8px}
+.attn-list{display:flex;flex-wrap:wrap;gap:7px}
+.attn-item{border:1.5px solid var(--line);background:#fffdf7;border-radius:9px;padding:5px 10px;font-size:12px;font-weight:600;color:var(--ink);cursor:pointer;font-family:"Spline Sans",sans-serif;display:inline-flex;align-items:center;gap:6px}
+.attn-item span{font-weight:600;font-size:11px;padding:1px 6px;border-radius:6px}
+.attn-item.overdue{border-color:#e23b3b88}.attn-item.overdue span{background:#ffdada;color:var(--bad)}
+.attn-item.soon span{background:#fff0c8;color:var(--gold-deep)}
+.attn-item:hover{border-color:var(--clay);box-shadow:0 3px 10px -6px #0006}
+.tag.attn{border-color:#e23b3b;box-shadow:0 0 0 2px #e23b3b44,0 8px 18px -8px #e23b3b66}
 .stagebox .badge{font-weight:700;font-size:12.5px;padding:5px 11px;border-radius:9px;background:var(--paper-2);border:1.5px solid var(--line)}
 .stagebox .badge.ripe{background:#fff0c8;border-color:var(--gold);color:var(--gold-deep)}
 .pbar{height:11px;border-radius:7px;background:var(--paper-2);overflow:hidden;border:1.5px solid var(--line);flex:1}
@@ -264,6 +297,7 @@ header.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom
   </header>
 
   <div class="stats" id="stats"></div>
+  <div id="attnBanner"></div>
 
   <div class="main">
     <div>
@@ -384,6 +418,8 @@ function migrateTree(t){
   }
   if(!t.timeUnit)t.timeUnit="days";
   if(typeof t.notes!=="string")t.notes="";
+  if(!t.care)t.care={enabled:false,intervalDays:7,lastActionAt:t.plantedAt||Date.now()};
+  else{t.care.intervalDays=+t.care.intervalDays||7;t.care.lastActionAt=+t.care.lastActionAt||Date.now();t.care.enabled=!!t.care.enabled;}
   t.entries=t.entries.map(e=>({id:e.id||uid(),date:e.date||todayISO(),note:e.note||"",money:+e.money||0,time:+e.time||0}));
   delete t.money;delete t.time;
   return t;
@@ -408,7 +444,7 @@ function save(){Store.write({plots:state.plots,selectedPlotId:state.selectedPlot
 
 /* ---------- Derived ---------- */
 function newTree(speciesKey){const sp=SPECIES[speciesKey];return{species:speciesKey,venture:sp.name+" Venture",
-  entries:[],timeUnit:"days",notes:"",reqs:DEFAULT_REQS.map(l=>({id:uid(),label:l,done:false})),
+  entries:[],timeUnit:"days",notes:"",care:{enabled:false,intervalDays:7,lastActionAt:Date.now()},reqs:DEFAULT_REQS.map(l=>({id:uid(),label:l,done:false})),
   fruitCount:100,fruitValue:50,picked:0,plantedAt:Date.now()};}
 function progress(t){if(!t.reqs.length)return 1;return t.reqs.filter(r=>r.done).length/t.reqs.length;}
 function isReady(t){return progress(t)>=1;}
@@ -429,6 +465,25 @@ function topEarnerPlotId(){let best=null,bv=-Infinity;for(const p of treesPlots(
 const DAY_MS=86400000;
 function fmtDate(ts){try{return new Date(ts).toLocaleDateString(undefined,{year:"numeric",month:"short",day:"numeric"});}catch(e){return"";}}
 function fmtDuration(ms){const d=ms/DAY_MS;if(d<1)return"less than a day";if(d<14)return Math.round(d)+" day"+(Math.round(d)===1?"":"s");if(d<60)return Math.round(d/7)+" weeks";return Math.round(d/30)+" months";}
+/* ---------- Care / attention ---------- */
+const CARE_DECAY=8;            // health points lost per day a venture is overdue for action
+function careCfg(t){if(!t.care)t.care={enabled:false,intervalDays:7,lastActionAt:t.plantedAt||Date.now()};return t.care;}
+// Derives attention status & health purely from the interval and the last time the venture was tended.
+function careState(t){
+  const c=careCfg(t);
+  const intMs=Math.max(1,c.intervalDays)*DAY_MS;
+  const since=Date.now()-(c.lastActionAt||Date.now());
+  const dueIn=intMs-since;                       // ms until next action is due (negative = overdue)
+  const overdueDays=Math.max(0,-dueIn/DAY_MS);
+  const health=c.enabled?Math.max(0,Math.min(100,100-overdueDays*CARE_DECAY)):100;
+  const overdue=c.enabled&&dueIn<0;
+  const dueSoon=c.enabled&&!overdue&&dueIn<Math.max(DAY_MS,intMs*0.2);
+  return{enabled:c.enabled,intervalDays:c.intervalDays,dueIn,overdueDays,health,overdue,dueSoon,nextDue:(c.lastActionAt||Date.now())+intMs};
+}
+function needsAttention(t){const s=careState(t);return s.enabled&&(s.overdue||s.dueSoon);}
+function markCared(t){careCfg(t).lastActionAt=Date.now();}
+function plotsNeedingAttention(){return treesPlots().filter(p=>needsAttention(p.tree));}
+
 // Projects a harvest date from how fast requirements have been ticked since planting.
 function projectedHarvest(t){
   if(isReady(t))return{ready:true,text:"Ready to harvest now"};
@@ -712,6 +767,9 @@ function buildOrchard(){
     // gold ring (top earner)
     const gold=new THREE.Mesh(new THREE.TorusGeometry(2.75,0.12,10,44),new THREE.MeshBasicMaterial({color:0xffc94d}));
     gold.rotation.x=Math.PI/2;gold.position.y=0.05;gold.visible=(plot.id===topId);pivot.add(gold);pivot.userData.gold=gold;
+    // attention ring (overdue for care) — pulses red, toggled in the animation loop
+    const attn=new THREE.Mesh(new THREE.TorusGeometry(2.62,0.1,10,44),new THREE.MeshBasicMaterial({color:0xe23b3b}));
+    attn.rotation.x=Math.PI/2;attn.position.y=0.08;attn.visible=false;pivot.add(attn);pivot.userData.attn=attn;
 
     if(plot.tree){
       const tg=makeTree(plot.tree,plot.id);pivot.add(tg);pivot.userData.tree=tg;
@@ -801,7 +859,7 @@ function makeTree(t,plotId){
         f.position.set(fx,fy,fz);f.castShadow=true;f.userData={fruit:true,plotId:plotId};canopy.add(f);
       }
     }
-    g.add(canopy);g.userData.canopy=canopy;
+    g.add(canopy);g.userData.canopy=canopy;g.userData.canopyY=cy;
     topY=cy+cs*0.9;
   }
   g.userData.topY=topY;g.userData.swayPhase=Math.random()*Math.PI*2;g.userData.plotId=plotId;
@@ -816,12 +874,15 @@ function makeLabel(plot){
 }
 function updateLabelContent(plot){
   const el=labelEls[plot.id];if(!el||!plot.tree)return;const t=plot.tree;const st=stageInfo(t);
-  const king=plot.id===topEarnerPlotId();
+  const king=plot.id===topEarnerPlotId();const cs=careState(t);
   el.classList.toggle("king",king);
-  el.innerHTML=`<div class="tname">${king?'👑 ':''}${esc(t.venture)}</div>
+  el.classList.toggle("attn",cs.overdue);
+  const warn=cs.overdue?'⚠️ ':cs.dueSoon?'⏳ ':'';
+  el.innerHTML=`<div class="tname">${warn}${king?'👑 ':''}${esc(t.venture)}</div>
     <div class="row"><span>💰 invested</span><b>${money(moneyTotal(t))}</b></div>
     <div class="row"><span>⏱ time</span><b>${fmtTime(t)}</b></div>
     <div class="row"><span>🪙 sales</span><b>${money(salesOf(t))}</b></div>
+    ${cs.enabled?`<div class="row"><span>🩺 health</span><b>${Math.round(cs.health)}%</b></div>`:''}
     <span class="pill ${st.key==='ripe'?'ripe':''}">${st.key==='ripe'?'🍃 '+st.label:st.label}</span>`;
 }
 const _v=new THREE.Vector3();
@@ -951,11 +1012,19 @@ function updateWeather(dt,el){
 /* ----- tree sway ----- */
 function swayTrees(el){
   for(const k in pivots){const pv=pivots[k];const tg=pv.userData.tree;if(!tg)continue;
+    const plot=plotById(k);const cs=(plot&&plot.tree)?careState(plot.tree):null;
     const amp=0.018+windCur*0.13;const ph=tg.userData.swayPhase;
-    if(tg.userData.canopy){tg.userData.canopy.rotation.z=Math.sin(el*1.6+ph)*amp;tg.userData.canopy.rotation.x=Math.cos(el*1.3+ph)*amp*0.6;}
+    if(tg.userData.canopy){
+      tg.userData.canopy.rotation.z=Math.sin(el*1.6+ph)*amp;tg.userData.canopy.rotation.x=Math.cos(el*1.3+ph)*amp*0.6;
+      // wilt the canopy as plant health drops from neglect
+      const h=cs?cs.health/100:1;const wilt=0.62+0.38*h;
+      tg.userData.canopy.scale.y=wilt;tg.userData.canopy.position.y=tg.userData.canopyY*(0.85+0.15*h);
+    }
     tg.rotation.z=Math.sin(el*1.2+ph)*amp*0.35;
     if(pv.userData.crown){pv.userData.crown.rotation.y=el*0.8;pv.userData.crown.position.y=tg.userData.topY+1.0+Math.sin(el*2)*0.12;}
     if(pv.userData.gold){const s=1+Math.sin(el*2.2)*0.05;pv.userData.gold.scale.set(s,s,1);}
+    if(pv.userData.attn){const on=!!(cs&&cs.overdue);pv.userData.attn.visible=on;
+      if(on){const s=1+Math.sin(el*5)*0.06;pv.userData.attn.scale.set(s,s,1);pv.userData.attn.material.opacity=0.6+0.4*Math.abs(Math.sin(el*5));pv.userData.attn.material.transparent=true;}}
   }
 }
 
@@ -1078,6 +1147,7 @@ function deleteVenture(){const plot=selectedPlot();if(!plot||!plot.tree)return;
     plot.tree=null;save();rebuildTree(plot);renderStats();renderBoard();renderPanel();closeModal();toast("🪦 Venture removed");});}
 function updateField(field,val){const t=selectedTree();if(!t)return;let geo=false;
   if(field==="notes"){t.notes=val;save();flashNotesSaved();return;}   // lightweight auto-save, keeps focus
+  if(field==="careInterval"){let v=parseInt(val,10);if(isNaN(v)||v<1)v=1;careCfg(t).intervalDays=v;save();refreshAttention();renderStats();return;}
   if(field==="fruitValue"){let v=parseFloat(val);if(isNaN(v)||v<0)v=0;t.fruitValue=v;}
   else if(field==="fruitCount"){let v=parseInt(val,10);if(isNaN(v)||v<0)v=0;t.fruitCount=v;if(t.picked>v)t.picked=v;geo=true;}
   else if(field==="venture")t.venture=val;
@@ -1088,6 +1158,8 @@ function updateField(field,val){const t=selectedTree();if(!t)return;let geo=fals
   const plot=selectedPlot();if(plot&&labelEls[plot.id])updateLabelContent(plot);
   refreshDerived();
 }
+function setCareEnabled(on){const t=selectedTree();if(!t)return;careCfg(t).enabled=!!on;if(on)markCared(t);save();renderPanel();renderStats();refreshAttention();}
+function doCare(){const t=selectedTree();if(!t)return;markCared(t);save();renderPanel();renderStats();refreshAttention();toast("🌿 Tended — plant health restored");}
 let _notesSavedTimer=null;
 function flashNotesSaved(){const el=document.getElementById("notesSaved");if(!el)return;
   el.classList.add("show");clearTimeout(_notesSavedTimer);
@@ -1116,7 +1188,21 @@ function renderStats(){
     <div class="chip sal"><div class="lbl">Total sales</div><div class="val">${money(sal)}</div></div>
     <div class="chip profit"><div class="lbl">Net profit</div><div class="val ${cls}">${money(pr)}</div></div>
     <div class="chip fr"><div class="lbl">Fruits harvested</div><div class="val">${picked.toLocaleString()}</div></div>`;
+  renderAttentionBanner();
 }
+// Highlights ventures whose required action is overdue or due soon, and lets you jump to them.
+function renderAttentionBanner(){
+  const el=document.getElementById("attnBanner");if(!el)return;
+  const list=plotsNeedingAttention();
+  if(!list.length){el.innerHTML="";el.classList.remove("show");return;}
+  el.classList.add("show");
+  const items=list.map(p=>{const s=careState(p.tree);const sp=SPECIES[p.tree.species];
+    const tag=s.overdue?`overdue ${fmtDuration(s.overdueDays*DAY_MS)}`:`due ${s.dueIn<DAY_MS?'soon':'in '+fmtDuration(s.dueIn)}`;
+    return `<button class="attn-item ${s.overdue?'overdue':'soon'}" data-attnplot="${p.id}" title="Select this venture">${sp.emoji} ${esc(p.tree.venture)} <span>${tag}</span></button>`;}).join("");
+  const overdueN=list.filter(p=>careState(p.tree).overdue).length;
+  el.innerHTML=`<div class="attn-head">${overdueN?'⚠️':'⏳'} ${list.length} venture${list.length>1?'s':''} need${list.length>1?'':'s'} attention${overdueN?` · ${overdueN} overdue`:''}</div><div class="attn-list">${items}</div>`;
+}
+function refreshAttention(){renderAttentionBanner();for(const plot of treesPlots()){if(labelEls[plot.id])updateLabelContent(plot);}}
 function cmpRoi(t){const r=roiOf(t);return r===Infinity?1e12:r;}
 function renderBoard(){
   const root=document.getElementById("board");const P=treesPlots();
@@ -1129,6 +1215,25 @@ function renderBoard(){
       <div class="pos">${first?'👑':i+1}</div><div class="emo">${sp.emoji}</div>
       <div class="info"><div class="nm">${esc(t.venture)}</div><div class="meta">${sp.name} · ${stageInfo(t).label} · ${t.picked}/${t.fruitCount} sold</div></div>
       <div class="money"><div class="p ${cls}">${money(pr)}</div><div class="roi">ROI ${roiTxt(t)}</div></div></div>`;}).join("");
+}
+function careSectionHTML(t){
+  const c=careCfg(t);const s=careState(t);
+  const status=!c.enabled?'<span class="care-state off">Off — no action required</span>'
+    :s.overdue?`<span class="care-state bad">⚠️ Overdue by ${fmtDuration(s.overdueDays*DAY_MS)}</span>`
+    :s.dueSoon?`<span class="care-state soon">⏳ Action due ${s.dueIn<DAY_MS?'within a day':'in '+fmtDuration(s.dueIn)}</span>`
+    :`<span class="care-state ok">✓ Healthy · next action in ${fmtDuration(s.dueIn)}</span>`;
+  const hc=s.health>=66?'good':s.health>=33?'mid':'low';
+  return `<div class="section care ${c.enabled?'':'disabled'} ${s.overdue?'overdue':''}">
+    <div class="htitle">🩺 Care &amp; attention
+      <label class="care-switch"><input type="checkbox" data-action="careToggle" ${c.enabled?'checked':''} /> require action</label></div>
+    <div class="care-row">
+      <div class="field"><label>Action needed every</label><div class="inputwrap"><input type="number" min="1" step="1" data-field="careInterval" value="${c.intervalDays}" ${c.enabled?'':'disabled'} /><span class="post">days</span></div></div>
+      <button class="care-done" data-action="careDone" ${c.enabled?'':'disabled'}>✅ Mark action done</button>
+    </div>
+    <div class="care-health"><div class="lbl">Plant health <b>${Math.round(s.health)}%</b></div>
+      <div class="health-bar ${hc}"><i style="width:${s.health}%"></i></div></div>
+    ${status}
+  </div>`;
 }
 function renderPanel(){
   const plot=selectedPlot();const t=plot?plot.tree:null;const panel=document.getElementById("panel");
@@ -1151,6 +1256,7 @@ function renderPanel(){
       <div class="pbar ${ready?'ripe':''}"><i style="width:${p*100}%"></i></div>
       <span class="progtxt">${done}/${t.reqs.length||0}</span></div>
       ${(()=>{const h=projectedHarvest(t);return`<div class="harvest-proj ${h.ready?'ready':''} ${h.unknown?'unknown':''}">🗓️ <span>Projected harvest:</span> <b>${h.text}</b></div>`;})()}</div>
+    ${careSectionHTML(t)}
     <div class="section"><div class="htitle">🌱 Growth requirements <span style="font-weight:500;text-transform:none;letter-spacing:0">— tick to grow; last tick ripens the fruit</span></div>
       <div id="reqlist">${t.reqs.map(r=>`<div class="req ${r.done?'done':''}" data-reqid="${r.id}">
         <span class="drag" title="Drag to reorder">⠿</span>
@@ -1282,6 +1388,7 @@ function resetAll(){showConfirm("Clear the whole orchard?","Every plot, venture 
    ================================================================= */
 // board
 document.getElementById("board").addEventListener("click",e=>{const r=e.target.closest("[data-plot]");if(r){state.selectedPlotId=r.dataset.plot;save();updateSelectionRings();renderPanel();}});
+document.getElementById("attnBanner").addEventListener("click",e=>{const b=e.target.closest("[data-attnplot]");if(b)onPlotClick(b.dataset.attnplot);});
 function syncSort(){document.querySelectorAll(".sortrow button").forEach(b=>b.classList.toggle("on",b.dataset.sort===state.sortBy));}
 document.querySelector(".sortrow").addEventListener("click",e=>{const b=e.target.closest("[data-sort]");if(!b)return;state.sortBy=b.dataset.sort;save();syncSort();renderBoard();});
 // panel
@@ -1291,7 +1398,9 @@ panel.addEventListener("click",e=>{const tog=e.target.closest("[data-reqtoggle]"
   const a=e.target.closest("[data-action]");if(!a)return;const act=a.dataset.action,arg=a.dataset.arg;
   if(act==="addreq")addReqFromInput();else if(act==="delreq")delReq(arg);else if(act==="harvest")harvest(parseInt(arg,10));
   else if(act==="harvestAll")harvestAll();else if(act==="resetHarvest")resetHarvest();else if(act==="delete")deleteVenture();
-  else if(act==="addEntry")addEntry();else if(act==="delEntry")delEntry(arg);});
+  else if(act==="addEntry")addEntry();else if(act==="delEntry")delEntry(arg);
+  else if(act==="careDone")doCare();});
+panel.addEventListener("change",e=>{if(e.target.dataset.action==="careToggle")setCareEnabled(e.target.checked);});
 panel.addEventListener("keydown",e=>{if(e.target.id==="newReq"&&e.key==="Enter"){e.preventDefault();addReqFromInput();}});
 // toolbar
 document.getElementById("btnHelp").onclick=openHelp;
@@ -1328,6 +1437,8 @@ syncSort();syncTimeSlider();
 renderStats();renderBoard();renderPanel();
 try{initThree();}catch(err){console.error(err);document.getElementById("canvasWrap").innerHTML='<div style="color:#fff;padding:30px;font-family:sans-serif">3D failed to load. Try opening this file directly in a modern browser (Chrome/Edge/Firefox/Safari).<br><br>'+err+'</div>';}
 if(!treesPlots().length)setTimeout(()=>toast("👋 Tap a soil plot to plant your first venture"),600);
+// health & attention drift with real time, so refresh the banner/labels periodically without user input
+setInterval(refreshAttention,30000);
 </script>
 </body>
 </html>
