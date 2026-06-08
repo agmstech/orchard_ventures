@@ -38,6 +38,7 @@ header.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom
 .btn.primary{background:var(--clay);border-color:var(--clay-deep);color:#fff;box-shadow:0 3px 0 var(--clay-deep)}
 .btn.ghost{background:transparent}
 .btn.danger:hover{border-color:var(--bad);color:var(--bad)}
+.btn:disabled{opacity:.4;cursor:default;pointer-events:none}
 
 /* stats */
 .stats{display:flex;gap:10px;flex-wrap:wrap;margin:4px 0 14px}
@@ -360,6 +361,8 @@ header.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom
       <div><h1>Orchard Ventures</h1><p>Plant ideas. Tend the work. Harvest the sales.</p></div>
     </div>
     <div class="toolbtns">
+      <button class="btn ghost" id="btnUndo" title="Undo (Ctrl+Z)" disabled>↶ Undo</button>
+      <button class="btn ghost" id="btnRedo" title="Redo (Ctrl+Shift+Z)" disabled>↷ Redo</button>
       <button class="btn" id="btnHelp">❔ How it works</button>
       <button class="btn ghost" id="btnTeam">👥 Team</button>
       <button class="btn ghost" id="btnSettings">🌍 Settings</button>
@@ -736,7 +739,46 @@ function normalizeTeam(t){if(!Array.isArray(t))return[];const ids=new Set(t.map(
     parentId:(m.parentId&&ids.has(m.parentId)&&m.parentId!==m.id)?m.parentId:null,
     tasks:Array.isArray(m.tasks)?m.tasks.filter(k=>k&&typeof k.text==="string").map(k=>({id:k.id||uid(),text:k.text,done:!!k.done})):[]}));}
 function settingsGet(k){return (state&&state.settings?state.settings:normalizeSettings(null))[k];}
-function save(){Store.write({orchards:state.orchards,currentOrchardId:state.currentOrchardId,sortBy:state.sortBy,version:SCHEMA_VERSION});}
+function save(){Store.write(snapshotData());if(!applyingHistory)pushHistory();}
+
+/* ---------- Undo / redo ----------
+   A history of whole-state snapshots. Because every mutating action funnels through save(),
+   hooking save() captures them all. Rapid edits (e.g. typing notes) within a short window are
+   coalesced into a single undo step so one Ctrl+Z doesn't only erase a character. */
+let history=[],histIndex=-1,applyingHistory=false,lastPushTs=0;
+const HISTORY_LIMIT=120, HISTORY_COALESCE_MS=500;
+function pushHistory(){
+  const s=JSON.stringify(snapshotData());
+  if(histIndex>=0&&history[histIndex]===s)return;   // no real change
+  const now=Date.now();
+  if(histIndex>=0&&histIndex===history.length-1&&now-lastPushTs<HISTORY_COALESCE_MS){
+    history[histIndex]=s;lastPushTs=now;updateUndoButtons();return;   // group the burst (only when no redo pending)
+  }
+  history=history.slice(0,histIndex+1);
+  history.push(s);
+  if(history.length>HISTORY_LIMIT)history.shift();
+  histIndex=history.length-1;lastPushTs=now;
+  updateUndoButtons();
+}
+function applySnapshot(str){
+  applyingHistory=true;
+  try{
+    const m=migrateStore(JSON.parse(str));
+    state.orchards=m.orchards;state.currentOrchardId=m.currentOrchardId;state.sortBy=m.sortBy;
+    applyCurrency();updateSeasonHUD();Store.write(snapshotData());
+    if(typeof buildOrchard==="function"){   // keep the camera where it is — only rebuild content
+      buildOrchard();updateSelectionRings();renderOrchardBar();renderStats();renderBoard();renderPanel();syncSort();refreshAttention();
+    }
+  }finally{applyingHistory=false;}
+}
+function canUndo(){return histIndex>0;}
+function canRedo(){return histIndex<history.length-1;}
+function undo(){if(!canUndo())return;histIndex--;applySnapshot(history[histIndex]);updateUndoButtons();toast("↶ Undo");}
+function redo(){if(!canRedo())return;histIndex++;applySnapshot(history[histIndex]);updateUndoButtons();toast("↷ Redo");}
+function updateUndoButtons(){
+  const u=document.getElementById("btnUndo"),r=document.getElementById("btnRedo");
+  if(u)u.disabled=!canUndo();if(r)r.disabled=!canRedo();
+}
 
 /* ---------- Derived ---------- */
 function newTree(speciesKey){const sp=SPECIES[speciesKey];return{species:speciesKey,venture:sp.name+" Venture",
@@ -2142,7 +2184,18 @@ document.getElementById("btnBackups").onclick=openBackups;
 document.getElementById("btnExport").onclick=exportData;
 document.getElementById("btnImport").onclick=()=>document.getElementById("fileImport").click();
 document.getElementById("fileImport").addEventListener("change",e=>{if(e.target.files[0])importData(e.target.files[0]);e.target.value="";});
-document.addEventListener("keydown",e=>{if(e.key==="Escape")closeModal();});
+document.getElementById("btnUndo").onclick=undo;
+document.getElementById("btnRedo").onclick=redo;
+document.addEventListener("keydown",e=>{
+  if(e.key==="Escape"){closeModal();return;}
+  if(e.ctrlKey||e.metaKey){
+    const k=e.key.toLowerCase();
+    // leave native text undo alone while editing a field
+    const ed=e.target&&/^(input|textarea|select)$/i.test(e.target.tagName);
+    if(!ed&&(k==="z"&&e.shiftKey||k==="y")){e.preventDefault();redo();}
+    else if(!ed&&k==="z"){e.preventDefault();undo();}
+  }
+});
 
 // camera dock
 document.querySelector(".dock.view").addEventListener("click",e=>{const b=e.target.closest("[data-cam]");if(!b)return;const c=b.dataset.cam;
@@ -2187,6 +2240,8 @@ setInterval(refreshAttention,30000);
 // take an automatic backup at boot (if due) and check again periodically
 maybeAutoBackup();
 setInterval(maybeAutoBackup,5*60000);
+// seed the undo history with the loaded state
+pushHistory();updateUndoButtons();
 </script>
 </body>
 </html>
