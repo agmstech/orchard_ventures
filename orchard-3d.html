@@ -81,6 +81,7 @@ header.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom
 .hud{position:absolute;left:12px;top:12px;background:var(--glass);border:1px solid var(--glass-line);border-radius:14px;
   padding:7px 12px;display:flex;align-items:center;gap:9px;backdrop-filter:blur(10px);z-index:6;color:#fff}
 .hud .wx{font-size:18px}
+.hud-sep{width:1px;align-self:stretch;background:var(--glass-line);margin:0 1px}
 .hud .clk{font-family:"Spline Sans Mono",monospace;font-weight:600;font-size:15px;letter-spacing:.5px}
 .hud .ph{font-size:11px;opacity:.75}
 .i3{width:34px;height:34px;border-radius:10px;border:1px solid var(--glass-line);background:rgba(255,255,255,.08);
@@ -262,6 +263,16 @@ header.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom
 .modal .mhead{padding:18px 20px;border-bottom:2px solid var(--line);display:flex;align-items:center;justify-content:space-between}
 .modal .mhead h2{font-family:"Fraunces",serif;margin:0;font-size:20px}
 .modal .mbody{padding:18px 20px}
+.setrow{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:4px}
+.setrow label{font-weight:700;font-size:13px;color:var(--ink)}
+.setsel{flex:1;max-width:300px;font-family:"Spline Sans",sans-serif;font-size:13.5px;color:var(--ink);background:var(--paper-2);border:1.5px solid var(--line);border-radius:10px;padding:9px 11px;cursor:pointer}
+.setsel:focus{outline:none;border-color:var(--leaf)}
+.sethint{font-size:12px;color:var(--ink-soft);margin:6px 0 14px;line-height:1.5}
+.setcard{background:var(--paper-2);border:1.5px solid var(--line);border-radius:13px;padding:12px 14px;margin:4px 0 12px}
+.setcard-row{display:flex;justify-content:space-between;gap:14px;font-size:13px;padding:4px 0}
+.setcard-row+.setcard-row{border-top:1px solid var(--line)}
+.setcard-row span{color:var(--ink-soft)}
+.setcard-row b{color:var(--ink);text-align:right}
 .species-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:10px}
 .species{border:1.5px solid var(--line);background:var(--paper-2);border-radius:14px;padding:12px 8px;text-align:center;transition:.15s}
 .species:hover{border-color:var(--clay);transform:translateY(-2px);background:#fff}
@@ -289,6 +300,7 @@ header.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom
     </div>
     <div class="toolbtns">
       <button class="btn" id="btnHelp">❔ How it works</button>
+      <button class="btn ghost" id="btnSettings">🌍 Settings</button>
       <button class="btn ghost" id="btnExport">⬇️ Backup</button>
       <button class="btn ghost" id="btnImport">⬆️ Restore</button>
       <input type="file" id="fileImport" accept="application/json" hidden>
@@ -309,6 +321,9 @@ header.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom
           <div class="hud">
             <span class="wx" id="wxIcon">☀️</span>
             <div><div class="clk" id="clk">12:00</div><div class="ph" id="ph">Midday</div></div>
+            <div class="hud-sep"></div>
+            <span class="wx" id="seasonIcon">🌤️</span>
+            <div><div class="clk" id="seasonLbl" style="font-size:13px">Season</div><div class="ph" id="locLbl">Manila</div></div>
           </div>
 
           <div class="scene-hint">Drag to orbit · scroll/pinch to zoom · tap a plot to plant · tap fruit to harvest</div>
@@ -401,7 +416,68 @@ const SPECIES = {
   duhat:{name:"Duhat",emoji:"🟣",canopy:0x3f7a35,fruit:0x3a2350},
 };
 const DEFAULT_REQS=["Market research","Funding secured","System development","Team hired","Marketing launch"];
-const CUR="₱";
+
+/* ---------- Currencies & locations ---------- */
+const CURRENCIES={
+  PHP:{sym:"₱",locale:"en-PH",name:"Philippine peso"},
+  USD:{sym:"$",locale:"en-US",name:"US dollar"},
+  EUR:{sym:"€",locale:"de-DE",name:"Euro"},
+  GBP:{sym:"£",locale:"en-GB",name:"British pound"},
+  JPY:{sym:"¥",locale:"ja-JP",name:"Japanese yen",zero:true},
+  INR:{sym:"₹",locale:"en-IN",name:"Indian rupee"},
+  AUD:{sym:"A$",locale:"en-AU",name:"Australian dollar"},
+  CAD:{sym:"C$",locale:"en-CA",name:"Canadian dollar"},
+  SGD:{sym:"S$",locale:"en-SG",name:"Singapore dollar"},
+  MYR:{sym:"RM",locale:"ms-MY",name:"Malaysian ringgit"},
+  AED:{sym:"د.إ",locale:"ar-AE",name:"UAE dirham"},
+  BRL:{sym:"R$",locale:"pt-BR",name:"Brazilian real"},
+};
+// hemisphere drives season; climate biases the weather mix
+const LOCATIONS={
+  manila:{name:"Manila, Philippines",hemisphere:"N",climate:"tropical",currency:"PHP"},
+  singapore:{name:"Singapore",hemisphere:"N",climate:"tropical",currency:"SGD"},
+  mumbai:{name:"Mumbai, India",hemisphere:"N",climate:"tropical",currency:"INR"},
+  dubai:{name:"Dubai, UAE",hemisphere:"N",climate:"arid",currency:"AED"},
+  london:{name:"London, UK",hemisphere:"N",climate:"temperate",currency:"GBP"},
+  newyork:{name:"New York, USA",hemisphere:"N",climate:"continental",currency:"USD"},
+  tokyo:{name:"Tokyo, Japan",hemisphere:"N",climate:"temperate",currency:"JPY"},
+  paris:{name:"Paris, France",hemisphere:"N",climate:"temperate",currency:"EUR"},
+  saopaulo:{name:"São Paulo, Brazil",hemisphere:"S",climate:"tropical",currency:"BRL"},
+  sydney:{name:"Sydney, Australia",hemisphere:"S",climate:"temperate",currency:"AUD"},
+};
+let CUR="₱",CUR_LOCALE="en-PH",CUR_ZERO=false;
+function applyCurrency(){const c=CURRENCIES[settingsGet("currency")]||CURRENCIES.PHP;CUR=c.sym;CUR_LOCALE=c.locale;CUR_ZERO=!!c.zero;}
+function curLoc(){return LOCATIONS[settingsGet("location")]||LOCATIONS.manila;}
+// Real-world season derived from the device's current month and the location's hemisphere/climate.
+function currentSeason(){
+  const loc=curLoc();const m=new Date().getMonth();   // 0-11
+  if(loc.climate==="tropical"){
+    // wet/dry seasons; flip for the southern hemisphere
+    let wet=(m>=5&&m<=10);                              // Jun–Nov (northern tropics)
+    if(loc.hemisphere==="S")wet=(m>=9||m<=2);           // Oct–Mar
+    return wet?{key:"wet",label:"Wet season",emoji:"🌧️"}:{key:"dry",label:"Dry season",emoji:"🌤️"};
+  }
+  // four temperate seasons
+  let idx=Math.floor(((m+1)%12)/3);                    // 0 win,1 spr,2 sum,3 aut (northern)
+  if(loc.hemisphere==="S")idx=(idx+2)%4;
+  return [{key:"winter",label:"Winter",emoji:"❄️"},{key:"spring",label:"Spring",emoji:"🌸"},
+          {key:"summer",label:"Summer",emoji:"☀️"},{key:"autumn",label:"Autumn",emoji:"🍂"}][idx];
+}
+// Weather probabilities reflect the location's climate and the current season.
+function weatherWeights(){
+  const loc=curLoc();const s=currentSeason().key;
+  const W={tropical_wet:{clear:.3,wind:.2,rain:.5},tropical_dry:{clear:.7,wind:.2,rain:.1},
+    arid:{clear:.7,wind:.27,rain:.03},
+    temp_winter:{clear:.3,wind:.3,rain:.4},temp_spring:{clear:.4,wind:.3,rain:.3},
+    temp_summer:{clear:.6,wind:.2,rain:.2},temp_autumn:{clear:.35,wind:.3,rain:.35},
+    cont_winter:{clear:.25,wind:.3,rain:.45},cont_summer:{clear:.55,wind:.2,rain:.25}};
+  if(loc.climate==="tropical")return s==="wet"?W.tropical_wet:W.tropical_dry;
+  if(loc.climate==="arid")return W.arid;
+  if(loc.climate==="continental")return (s==="winter")?W.cont_winter:(s==="summer")?W.cont_summer:W.temp_spring;
+  return W["temp_"+s]||W.temp_spring;
+}
+function pickWeather(){const w=weatherWeights();const r=Math.random();
+  if(r<w.clear)return"clear";if(r<w.clear+w.wind)return"wind";return"rain";}
 
 /* ---------- Storage ---------- */
 const Store={KEY:"orchard_ventures_3d_v1",_mem:null,
@@ -435,12 +511,15 @@ let state=(function(){
     }
     s.selectedPlotId=s.selectedPlotId||null;
     s.sortBy=s.sortBy||"profit";
+    s.settings=normalizeSettings(s.settings);
     s.plots.forEach(p=>{if(p.tree)migrateTree(p.tree);});
     return s;
   }
-  return {plots:[{id:uid(),tree:null},{id:uid(),tree:null},{id:uid(),tree:null}],selectedPlotId:null,sortBy:"profit"};
+  return {plots:[{id:uid(),tree:null},{id:uid(),tree:null},{id:uid(),tree:null}],selectedPlotId:null,sortBy:"profit",settings:normalizeSettings(null)};
 })();
-function save(){Store.write({plots:state.plots,selectedPlotId:state.selectedPlotId,sortBy:state.sortBy});}
+function normalizeSettings(s){s=s||{};return{currency:CURRENCIES[s.currency]?s.currency:"PHP",location:LOCATIONS[s.location]?s.location:"manila"};}
+function settingsGet(k){return (state&&state.settings?state.settings:normalizeSettings(null))[k];}
+function save(){Store.write({plots:state.plots,selectedPlotId:state.selectedPlotId,sortBy:state.sortBy,settings:state.settings});}
 
 /* ---------- Derived ---------- */
 function newTree(speciesKey){const sp=SPECIES[speciesKey];return{species:speciesKey,venture:sp.name+" Venture",
@@ -494,7 +573,7 @@ function projectedHarvest(t){
   const date=Date.now()+remainMs;
   return{ready:false,unknown:false,remainMs,date,text:"~"+fmtDuration(remainMs)+" · around "+fmtDate(date)};
 }
-function money(n){if(!isFinite(n))return CUR+"0";const neg=n<0;n=Math.abs(n);return(neg?"−":"")+CUR+n.toLocaleString("en-PH",{maximumFractionDigits:2});}
+function money(n){if(!isFinite(n))return CUR+"0";const neg=n<0;n=Math.abs(n);return(neg?"−":"")+CUR+n.toLocaleString(CUR_LOCALE,{maximumFractionDigits:CUR_ZERO?0:2});}
 function roiTxt(t){const r=roiOf(t);if(r===Infinity)return"∞%";return(r>=0?"+":"")+r.toFixed(0)+"%";}
 function esc(s){return String(s).replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]));}
 function fmtTime(t){return timeTotal(t).toLocaleString()+" "+(t.timeUnit||"days");}
@@ -998,7 +1077,7 @@ function updateClockUI(time,star){
 function setWeather(w){weather=w;}
 function updateWeather(dt,el){
   if(autoWx && performance.now()>nextWxAt){
-    const r=Math.random();weather=r<0.5?"clear":r<0.8?"wind":"rain";
+    weather=pickWeather();   // biased by the selected location's climate & current season
     nextWxAt=performance.now()+ (16000+Math.random()*26000);
   }
   const targetWind=weather==="wind"?0.85:weather==="rain"?0.45:0.12;
@@ -1347,11 +1426,50 @@ function closeModal(){modalRoot.innerHTML="";}
 modalRoot.addEventListener("click",e=>{if(e.target===modalRoot.firstElementChild)closeModal();if(e.target.closest("[data-close]"))closeModal();
   const pick=e.target.closest("[data-pick]");if(pick){closeModal();plant(pick.dataset.pick);}
   if(e.target.id==="confirmYes"&&modalRoot._yes)modalRoot._yes();});
+modalRoot.addEventListener("change",e=>{const st=e.target.dataset.setting;if(st)setSetting(st,e.target.value);});
 function openSpeciesPicker(){
   const cards=Object.entries(SPECIES).map(([k,s])=>`<button class="species" data-pick="${k}"><div class="e">${s.emoji}</div><div class="n">${s.name}</div></button>`).join("");
   modalRoot.innerHTML=`<div class="overlay"><div class="modal"><div class="mhead"><h2>🌱 Plant a venture</h2><button class="iconbtn" data-close>✕</button></div>
-    <div class="mbody"><p style="margin:0 0 14px;color:var(--ink-soft);font-size:13.5px">Choose a Philippine fruit tree to represent this business idea. You can rename it after planting.</p>
+    <div class="mbody"><p style="margin:0 0 14px;color:var(--ink-soft);font-size:13.5px">Choose a fruit tree to represent this business idea. You can rename it after planting.</p>
     <div class="species-grid">${cards}</div></div></div></div>`;
+}
+function updateSeasonHUD(){
+  const loc=curLoc();const se=currentSeason();
+  const si=document.getElementById("seasonIcon");if(si)si.textContent=se.emoji;
+  const sl=document.getElementById("seasonLbl");if(sl)sl.textContent=se.label;
+  const ll=document.getElementById("locLbl");if(ll)ll.textContent=loc.name.split(",")[0];
+}
+function applySettings(){
+  state.settings=normalizeSettings(state.settings);
+  applyCurrency();updateSeasonHUD();save();
+  renderStats();renderBoard();renderPanel();
+  for(const plot of treesPlots()){if(labelEls[plot.id])updateLabelContent(plot);}
+  nextWxAt=performance.now()+600;   // re-roll weather soon so the new climate takes effect
+}
+function setSetting(k,v){
+  state.settings=normalizeSettings(state.settings);state.settings[k]=v;
+  if(k==="location"){const loc=LOCATIONS[v];if(loc&&loc.currency&&CURRENCIES[loc.currency])state.settings.currency=loc.currency;}
+  applySettings();openSettings();
+}
+function openSettings(){
+  const s=normalizeSettings(state.settings);const se=currentSeason();const loc=LOCATIONS[s.location];
+  const curOpts=Object.entries(CURRENCIES).map(([k,c])=>`<option value="${k}" ${k===s.currency?'selected':''}>${c.sym}  ${k} · ${c.name}</option>`).join("");
+  const locOpts=Object.entries(LOCATIONS).map(([k,l])=>`<option value="${k}" ${k===s.location?'selected':''}>${l.name}</option>`).join("");
+  modalRoot.innerHTML=`<div class="overlay"><div class="modal" style="max-width:460px"><div class="mhead"><h2>🌍 Settings</h2><button class="iconbtn" data-close>✕</button></div>
+  <div class="mbody">
+    <div class="setrow"><label>Location</label>
+      <select data-setting="location" class="setsel">${locOpts}</select></div>
+    <p class="sethint">Sets the hemisphere and climate that drive the season and weather. Changing location also switches the currency to the local one — you can override it below.</p>
+    <div class="setrow"><label>Currency</label>
+      <select data-setting="currency" class="setsel">${curOpts}</select></div>
+    <p class="sethint">All money figures use this currency symbol and number format.</p>
+    <div class="setcard">
+      <div class="setcard-row"><span>Current season</span><b>${se.emoji} ${se.label}</b></div>
+      <div class="setcard-row"><span>Climate</span><b>${loc.climate.charAt(0).toUpperCase()+loc.climate.slice(1)} · ${loc.hemisphere==="N"?"Northern":"Southern"} hemisphere</b></div>
+      <div class="setcard-row"><span>Weather</span><b>Auto-weather is biased toward this season &amp; climate</b></div>
+    </div>
+    <p class="sethint">Seasons follow your device's real-world date. Tropical locations have wet &amp; dry seasons; temperate ones cycle through four seasons (reversed below the equator).</p>
+  </div></div></div>`;
 }
 function openHelp(){
   modalRoot.innerHTML=`<div class="overlay"><div class="modal"><div class="mhead"><h2>❔ How the orchard works</h2><button class="iconbtn" data-close>✕</button></div>
@@ -1373,14 +1491,14 @@ function showConfirm(title,msg,onYes){modalRoot._yes=onYes;
   <div style="display:flex;gap:10px;justify-content:flex-end"><button class="btn ghost" data-close>Cancel</button><button class="btn primary" id="confirmYes">Yes, continue</button></div></div></div></div>`;
 }
 let toastTimer;function toast(m){const el=document.getElementById("toast");el.textContent=m;el.classList.add("show");clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove("show"),2200);}
-function exportData(){const blob=new Blob([JSON.stringify({plots:state.plots,sortBy:state.sortBy},null,2)],{type:"application/json"});
+function exportData(){const blob=new Blob([JSON.stringify({plots:state.plots,sortBy:state.sortBy,settings:state.settings},null,2)],{type:"application/json"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="orchard-ventures-backup.json";a.click();URL.revokeObjectURL(a.href);toast("⬇️ Backup downloaded");}
 function importData(file){const fr=new FileReader();fr.onload=()=>{try{const d=JSON.parse(fr.result);if(!d||!Array.isArray(d.plots))throw 0;
-  state.plots=d.plots;state.plots.forEach(p=>{if(p.tree)migrateTree(p.tree);});state.selectedPlotId=null;state.sortBy=d.sortBy||"profit";save();
+  state.plots=d.plots;state.plots.forEach(p=>{if(p.tree)migrateTree(p.tree);});state.selectedPlotId=null;state.sortBy=d.sortBy||"profit";state.settings=normalizeSettings(d.settings);applyCurrency();updateSeasonHUD();save();
   buildOrchard();fitCamera();updateSelectionRings();renderStats();renderBoard();renderPanel();syncSort();toast("⬆️ Orchard restored");}
   catch(e){toast("⚠️ Could not read that file");}};fr.readAsText(file);}
 function resetAll(){showConfirm("Clear the whole orchard?","Every plot, venture and record will be deleted. Consider a Backup first.",()=>{
-  state={plots:[{id:uid(),tree:null},{id:uid(),tree:null},{id:uid(),tree:null}],selectedPlotId:null,sortBy:"profit"};save();
+  state={plots:[{id:uid(),tree:null},{id:uid(),tree:null},{id:uid(),tree:null}],selectedPlotId:null,sortBy:"profit",settings:normalizeSettings(state.settings)};save();
   buildOrchard();fitCamera();updateSelectionRings();renderStats();renderBoard();renderPanel();closeModal();toast("🧹 Orchard cleared");});}
 
 /* =================================================================
@@ -1404,6 +1522,7 @@ panel.addEventListener("change",e=>{if(e.target.dataset.action==="careToggle")se
 panel.addEventListener("keydown",e=>{if(e.target.id==="newReq"&&e.key==="Enter"){e.preventDefault();addReqFromInput();}});
 // toolbar
 document.getElementById("btnHelp").onclick=openHelp;
+document.getElementById("btnSettings").onclick=openSettings;
 document.getElementById("btnReset").onclick=resetAll;
 document.getElementById("btnExport").onclick=exportData;
 document.getElementById("btnImport").onclick=()=>document.getElementById("fileImport").click();
@@ -1433,6 +1552,7 @@ document.querySelector(".dock.world").addEventListener("click",e=>{const b=e.tar
   else{autoWx=false;weather=w;b.classList.add("on");}});
 
 /* boot */
+applyCurrency();updateSeasonHUD();
 syncSort();syncTimeSlider();
 renderStats();renderBoard();renderPanel();
 try{initThree();}catch(err){console.error(err);document.getElementById("canvasWrap").innerHTML='<div style="color:#fff;padding:30px;font-family:sans-serif">3D failed to load. Try opening this file directly in a modern browser (Chrome/Edge/Firefox/Safari).<br><br>'+err+'</div>';}
