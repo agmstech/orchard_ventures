@@ -866,8 +866,10 @@ const target=new THREE.Vector3(0,2.2,0);
 let dragging=false,lastX=0,lastY=0,pinchD=0;
 
 // day/night & weather
-let timeOfDay=new Date().getHours()+new Date().getMinutes()/60;
+function realTimeOfDay(){const d=new Date();return d.getHours()+d.getMinutes()/60+d.getSeconds()/3600;}
+let timeOfDay=realTimeOfDay();
 let autoTime=false;
+let liveClock=true;   // when true (and not running the day cycle) the HUD tracks the real clock
 const DAY_SECONDS=120;          // full cycle when playing
 let weather="clear", autoWx=true, nextWxAt=performance.now()+8000;
 let windCur=0.12;               // smoothed wind level
@@ -1649,6 +1651,7 @@ function animate(){
   requestAnimationFrame(animate);
   const dt=Math.min(0.05,clock.getDelta());const el=clock.elapsedTime;
   if(autoTime){timeOfDay=(timeOfDay+dt*(24/DAY_SECONDS))%24;syncTimeSlider();}
+  else if(liveClock){timeOfDay=realTimeOfDay();syncTimeSlider();}   // follow the wall clock live, no reload needed
   updateWeather(dt,el);
   updateSky(timeOfDay);
   swayTrees(el);
@@ -2170,9 +2173,31 @@ function createBackup(label,opts){
   BackupStore.write(pruneBackups(list));
 }
 function lastBackupTs(){const l=BackupStore.read();return l.length?Math.max(...l.map(b=>b.ts||0)):0;}
+// When the next automatic backup is due (ms epoch); 0 when auto-backups are off.
+function nextBackupDueTs(){const c=backupCfg();if(!c.enabled)return 0;return lastBackupTs()+c.intervalHours*3600000;}
 function maybeAutoBackup(){
   const c=backupCfg();if(!c.enabled)return;
   if(Date.now()-lastBackupTs()>=c.intervalHours*3600000){createBackup("",{auto:true});if(backupModalOpen())renderBackupsModal();}
+}
+// "1h 4m 12s"-style short duration for the live backup countdown.
+function fmtCountdown(ms){if(ms<0)ms=0;let s=Math.floor(ms/1000);const h=Math.floor(s/3600);s-=h*3600;const m=Math.floor(s/60);s-=m*60;
+  return (h?h+"h ":"")+(h||m?m+"m ":"")+s+"s";}
+// Live-updates the "next automatic backup in …" line while the Backups manager is open.
+function refreshBackupCountdown(){
+  const el=document.getElementById("bkNext");if(!el)return;
+  const due=nextBackupDueTs();
+  if(!due){el.textContent="Automatic backups are off.";return;}
+  const left=due-Date.now();
+  el.innerHTML=left<=0?"Next automatic backup: <b>due now</b>.":"Next automatic backup in <b>"+fmtCountdown(left)+"</b>.";
+}
+// A lightweight cron-style heartbeat: ticks every second to keep the backup
+// schedule (and its on-screen countdown) running without a page reload. The HUD
+// clock itself is advanced live in the render loop.
+let _cronN=0;
+function cronTick(){
+  _cronN++;
+  if(_cronN%20===0)maybeAutoBackup();   // re-check the backup schedule every 20s
+  if(backupModalOpen())refreshBackupCountdown();
 }
 function restoreBackup(id){
   const b=BackupStore.read().find(x=>x.id===id);if(!b)return;
@@ -2188,7 +2213,7 @@ function restoreBackup(id){
 function deleteBackup(id){BackupStore.write(BackupStore.read().filter(b=>b.id!==id));renderBackupsModal();}
 function togglePinBackup(id){const l=BackupStore.read();const b=l.find(x=>x.id===id);if(b){b.pinned=!b.pinned;BackupStore.write(l);renderBackupsModal();}}
 function backupModalOpen(){return !!modalRoot.querySelector("[data-backuproot]");}
-function openBackups(){renderBackupsModal();}
+function openBackups(){renderBackupsModal();refreshBackupCountdown();}
 function renderBackupsModal(){
   const c=backupCfg();const list=BackupStore.read().slice().sort((a,b)=>b.ts-a.ts);
   const intervalOpts=[[1,"Every hour"],[6,"Every 6 hours"],[12,"Every 12 hours"],[24,"Every day"],[72,"Every 3 days"],[168,"Every week"]]
@@ -2205,7 +2230,7 @@ function renderBackupsModal(){
   const lastTs=lastBackupTs();
   modalRoot.innerHTML=`<div class="overlay"><div class="modal" data-backuproot style="max-width:560px"><div class="mhead"><h2>🗄️ Backups</h2><button class="iconbtn" data-close>✕</button></div>
   <div class="mbody">
-    <p style="margin:0 0 12px;color:var(--ink-soft);font-size:13px">Backups are saved inside this browser and snapshot <b>all</b> your orchards, ventures and settings. Restore any one with a click. ${lastTs?`Last backup: <b>${fmtDateTime(lastTs)}</b>.`:''}</p>
+    <p style="margin:0 0 12px;color:var(--ink-soft);font-size:13px">Backups are saved inside this browser and snapshot <b>all</b> your orchards, ventures and settings. Restore any one with a click. ${lastTs?`Last backup: <b>${fmtDateTime(lastTs)}</b>.`:''} <span id="bkNext"></span></p>
     <div class="setrow"><label>Automatic backups</label>
       <label class="bk-switch"><input type="checkbox" data-bkcfg="enabled" ${c.enabled?'checked':''}> <span>${c.enabled?'On':'Off'}</span></label></div>
     <div class="setrow"><label>Frequency</label><select class="setsel" data-bkcfg="intervalHours" ${c.enabled?'':'disabled'}>${intervalOpts}</select></div>
@@ -2214,6 +2239,7 @@ function renderBackupsModal(){
     <button class="btn primary" data-bkact="now" style="margin-bottom:12px">＋ Back up now</button>
     <div class="bk-list">${rows}</div>
   </div></div></div>`;
+  refreshBackupCountdown();
 }
 function exportData(){const blob=new Blob([JSON.stringify({app:"Orchard Ventures",appVersion:APP_VERSION,orchards:state.orchards,currentOrchardId:state.currentOrchardId,sortBy:state.sortBy,version:SCHEMA_VERSION},null,2)],{type:"application/json"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="orchard-ventures-backup.json";a.click();URL.revokeObjectURL(a.href);toast("⬇️ Exported to file");}
@@ -2288,9 +2314,10 @@ document.getElementById("btnNames").onclick=function(){showNames=!showNames;this
 document.getElementById("btnAddPlot").onclick=addPlot;
 document.getElementById("btnDelPlot").onclick=delPlot;
 const slider=document.getElementById("timeSlider");
-slider.addEventListener("input",()=>{timeOfDay=slider.value/60;autoTime=false;document.getElementById("btnPlay").textContent="▶️";});
+slider.addEventListener("input",()=>{timeOfDay=slider.value/60;autoTime=false;liveClock=false;document.getElementById("btnPlay").textContent="▶️";});
 function syncTimeSlider(){slider.value=Math.round(timeOfDay*60);}
-document.getElementById("btnPlay").onclick=function(){autoTime=!autoTime;this.textContent=autoTime?"⏸️":"▶️";};
+// Play runs the accelerated day→night cycle; pausing snaps back to the live wall clock.
+document.getElementById("btnPlay").onclick=function(){autoTime=!autoTime;liveClock=!autoTime;this.textContent=autoTime?"⏸️":"▶️";};
 document.querySelector(".dock.world").addEventListener("click",e=>{const b=e.target.closest("[data-wx]");if(!b)return;const w=b.dataset.wx;
   document.querySelectorAll("[data-wx]").forEach(x=>x.classList.remove("on"));
   if(w==="auto"){autoWx=true;b.classList.add("on");nextWxAt=performance.now()+1500;}
@@ -2306,9 +2333,10 @@ try{initThree();loadViewSettings();}catch(err){console.error(err);document.getEl
 if(!treesPlots().length)setTimeout(()=>toast("👋 Tap a soil plot to plant your first venture"),600);
 // health & attention drift with real time, so refresh the banner/labels periodically without user input
 setInterval(refreshAttention,30000);
-// take an automatic backup at boot (if due) and check again periodically
+// take an automatic backup at boot (if due); the cron heartbeat keeps the schedule
+// (and the HUD clock, advanced in the render loop) running live without a reload
 maybeAutoBackup();
-setInterval(maybeAutoBackup,5*60000);
+setInterval(cronTick,1000);
 // seed the undo history with the loaded state
 pushHistory();updateUndoButtons();
 </script>
