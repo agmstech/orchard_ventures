@@ -139,6 +139,10 @@ header.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom
 .pbody{padding:16px 18px;max-height:calc(100vh - 130px);overflow:auto}
 .section{margin-bottom:18px}
 .section>.htitle{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-soft);font-weight:700;margin-bottom:9px}
+.notes-area{width:100%;box-sizing:border-box;resize:vertical;min-height:62px;font-family:"Spline Sans",sans-serif;font-size:13px;line-height:1.5;color:var(--ink);background:var(--paper);border:1.5px solid var(--line);border-radius:10px;padding:9px 11px;outline:none;transition:border-color .15s}
+.notes-area:focus{border-color:var(--leaf)}
+.notes-saved{float:right;font-size:10px;font-weight:700;letter-spacing:.04em;color:var(--ok);opacity:0;transition:opacity .2s;text-transform:none}
+.notes-saved.show{opacity:1}
 .stagebox{display:flex;align-items:center;gap:10px;margin-bottom:8px}
 .stagebox .badge{font-weight:700;font-size:12.5px;padding:5px 11px;border-radius:9px;background:var(--paper-2);border:1.5px solid var(--line)}
 .stagebox .badge.ripe{background:#fff0c8;border-color:var(--gold);color:var(--gold-deep)}
@@ -374,6 +378,7 @@ function migrateTree(t){
     if((+t.money>0)||(+t.time>0))t.entries.push({id:uid(),date:isoFromTs(t.plantedAt)||todayISO(),note:"Initial investment",money:+t.money||0,time:+t.time||0});
   }
   if(!t.timeUnit)t.timeUnit="days";
+  if(typeof t.notes!=="string")t.notes="";
   t.entries=t.entries.map(e=>({id:e.id||uid(),date:e.date||todayISO(),note:e.note||"",money:+e.money||0,time:+e.time||0}));
   delete t.money;delete t.time;
   return t;
@@ -398,7 +403,7 @@ function save(){Store.write({plots:state.plots,selectedPlotId:state.selectedPlot
 
 /* ---------- Derived ---------- */
 function newTree(speciesKey){const sp=SPECIES[speciesKey];return{species:speciesKey,venture:sp.name+" Venture",
-  entries:[],timeUnit:"days",reqs:DEFAULT_REQS.map(l=>({id:uid(),label:l,done:false})),
+  entries:[],timeUnit:"days",notes:"",reqs:DEFAULT_REQS.map(l=>({id:uid(),label:l,done:false})),
   fruitCount:100,fruitValue:50,picked:0,plantedAt:Date.now()};}
 function progress(t){if(!t.reqs.length)return 1;return t.reqs.filter(r=>r.done).length/t.reqs.length;}
 function isReady(t){return progress(t)>=1;}
@@ -1054,6 +1059,7 @@ function deleteVenture(){const plot=selectedPlot();if(!plot||!plot.tree)return;
   showConfirm(`Dig up "${esc(plot.tree.venture)}"?`,"This removes the venture but keeps the empty plot.",()=>{
     plot.tree=null;save();rebuildTree(plot);renderStats();renderBoard();renderPanel();closeModal();toast("🪦 Venture removed");});}
 function updateField(field,val){const t=selectedTree();if(!t)return;let geo=false;
+  if(field==="notes"){t.notes=val;save();flashNotesSaved();return;}   // lightweight auto-save, keeps focus
   if(field==="fruitValue"){let v=parseFloat(val);if(isNaN(v)||v<0)v=0;t.fruitValue=v;}
   else if(field==="fruitCount"){let v=parseInt(val,10);if(isNaN(v)||v<0)v=0;t.fruitCount=v;if(t.picked>v)t.picked=v;geo=true;}
   else if(field==="venture")t.venture=val;
@@ -1064,6 +1070,10 @@ function updateField(field,val){const t=selectedTree();if(!t)return;let geo=fals
   const plot=selectedPlot();if(plot&&labelEls[plot.id])updateLabelContent(plot);
   refreshDerived();
 }
+let _notesSavedTimer=null;
+function flashNotesSaved(){const el=document.getElementById("notesSaved");if(!el)return;
+  el.classList.add("show");clearTimeout(_notesSavedTimer);
+  _notesSavedTimer=setTimeout(()=>el.classList.remove("show"),1100);}
 function afterInvestChange(){const plot=selectedPlot();save();updateCrowns();renderStats();renderBoard();if(plot&&labelEls[plot.id])updateLabelContent(plot);refreshDerived();}
 function updateEntry(eid,field,val){const t=selectedTree();if(!t)return;const e=(t.entries||[]).find(x=>x.id===eid);if(!e)return;
   if(field==="money"||field==="time"){let v=parseFloat(val);if(isNaN(v)||v<0)v=0;e[field]=v;}
@@ -1159,6 +1169,8 @@ function renderPanel(){
             <button class="reset" data-action="resetHarvest" ${t.picked<=0?'disabled':''}>↺ Reset</button></div>
           ${rem<=0?'<div class="lockmsg">🎉 Fully harvested — every fruit sold!</div>':''}`
           :`<div class="lockmsg">🔒 Fruit ripens once all requirements are ticked (${done}/${t.reqs.length}).</div>`}</div></div>
+    <div class="section"><div class="htitle">📝 Notes <span class="notes-saved" id="notesSaved">saved ✓</span></div>
+      <textarea class="notes-area" data-field="notes" rows="4" placeholder="Jot down ideas, contacts, next steps… saved automatically as you type.">${esc(t.notes||"")}</textarea></div>
     <div class="section" style="margin-bottom:6px"><div class="htitle">📊 Profit &amp; loss</div>
       <div class="pl">
         <div class="cell"><div class="l">Sales (revenue)</div><div class="v" id="pl-sales">${money(salesOf(t))}</div></div>
