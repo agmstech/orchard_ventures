@@ -793,6 +793,7 @@ const pivots={};            // plotId -> pivot Object3D
 let fruitMeshes=[];
 const labelEls={};
 let clouds=[],birds=[],rain=null;
+let mountains=null,sea=null;    // background scenery: a mountain range on one side, the sea opposite
 
 const SPACING=7.2;
 // camera spherical
@@ -887,6 +888,9 @@ function initThree(){
   moonLight=new THREE.DirectionalLight(0x9fb4ff,0.0);scene.add(moonLight);
   hemi=new THREE.HemisphereLight(0xbfe0f5,0x6b6a4a,0.9);scene.add(hemi);
   amb=new THREE.AmbientLight(0xffffff,0.25);scene.add(amb);
+
+  // background scenery (mountain range one side, sea on the opposite side)
+  buildScenery();
 
   // clouds
   for(let i=0;i<7;i++)clouds.push(makeCloud());
@@ -1022,6 +1026,62 @@ function updateRain(dt){
     }
   }
   rain.geometry.attributes.position.needsUpdate=true;
+}
+
+/* ----- background scenery: mountain + sea ----- */
+// A low-poly mountain range sits far on the −Z side ("the background"); the sea fills the
+// opposite +Z side. Both ignore fog so they read as crisp distant backdrop, and are tinted to
+// suggest atmospheric haze. updateScenery() tints/animates them with the time of day.
+function buildScenery(){
+  // ----- mountains -----
+  mountains=new THREE.Group();
+  const rockMat=new THREE.MeshStandardMaterial({color:0x6d7c92,roughness:1,metalness:0,flatShading:true,fog:false});
+  const snowMat=new THREE.MeshStandardMaterial({color:0xeef3fb,roughness:.9,metalness:0,flatShading:true,fog:false});
+  mountains.userData={rockMat,snowMat};
+  // a row of overlapping peaks of varying size/height across the horizon
+  const peaks=[[-150,46,52],[-95,62,70],[-40,40,46],[20,70,80],[78,52,60],[140,44,50]];
+  peaks.forEach(([x,r,h],i)=>{
+    const seg=6+(i%2);
+    const cone=new THREE.Mesh(new THREE.ConeGeometry(r,h,seg,1),rockMat);
+    cone.position.set(x,h/2-2,-185-((i%3)*14));
+    cone.rotation.y=i*0.7;
+    mountains.add(cone);
+    if(h>=60){   // snowy cap on the tallest peaks
+      const cap=new THREE.Mesh(new THREE.ConeGeometry(r*0.42,h*0.32,seg,1),snowMat);
+      cap.position.set(x,h-h*0.16-2,-185-((i%3)*14));
+      cap.rotation.y=cone.rotation.y;
+      mountains.add(cap);
+    }
+  });
+  scene.add(mountains);
+
+  // ----- sea (opposite side, +Z) -----
+  const seaGeo=new THREE.PlaneGeometry(760,300,40,18);
+  const seaMat=new THREE.MeshStandardMaterial({color:0x2f7fae,roughness:.25,metalness:.25,fog:false,
+    transparent:true,opacity:.96,flatShading:true});
+  sea=new THREE.Mesh(seaGeo,seaMat);
+  sea.rotation.x=-Math.PI/2;
+  sea.position.set(0,0.08,240);   // begins just past the grass edge and stretches to the horizon
+  sea.userData={geo:seaGeo,base:Float32Array.from(seaGeo.attributes.position.array)};
+  scene.add(sea);
+}
+// gentle rolling-wave animation + day/night tint so the sea and peaks match the sky
+function updateScenery(el){
+  if(sea){
+    const a=sea.userData.geo.attributes.position,base=sea.userData.base;
+    for(let i=0;i<a.count;i++){
+      const bx=base[i*3],by=base[i*3+1];
+      a.array[i*3+2]=Math.sin(bx*0.05+el*0.9)*0.6+Math.cos(by*0.06+el*0.7)*0.5;
+    }
+    a.needsUpdate=true;
+    // sea darkens at night along with the daylight level
+    const b=Math.max(0.12,dayBright);
+    sea.material.color.setRGB(0.06+0.12*b,0.30+0.20*b,0.45+0.23*b);
+  }
+  if(mountains){
+    const b=Math.max(0.18,dayBright);
+    mountains.userData.rockMat.color.setRGB(0.20+0.23*b,0.26+0.23*b,0.34+0.23*b);
+  }
 }
 
 /* ----- build orchard ----- */
@@ -1412,6 +1472,7 @@ function animate(){
   updateClouds(dt);
   updateRain(dt);
   updateBirds(dt,el);
+  updateScenery(el);
   updateCamera();
   renderer.render(scene,camera);
   updateLabels();
