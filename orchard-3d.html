@@ -283,6 +283,7 @@ header.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom
 @keyframes rise{from{transform:translateY(18px) scale(.98);opacity:.6}to{transform:none;opacity:1}}
 .modal .mhead{padding:18px 20px;border-bottom:2px solid var(--line);display:flex;align-items:center;justify-content:space-between}
 .modal .mhead h2{font-family:"Fraunces",serif;margin:0;font-size:20px}
+.modal .mhead h2 .mhead-sub{font-family:inherit;font-weight:500;font-size:14px;color:var(--ink-soft)}
 .modal .mbody{padding:18px 20px}
 .setrow{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:4px}
 .setrow label{font-weight:700;font-size:13px;color:var(--ink)}
@@ -651,7 +652,7 @@ function pickWeather(){const w=weatherWeights();const r=Math.random();
 
 /* ---------- Storage ---------- */
 // Current data schema version. Bump when the saved shape changes; migrateStore() upgrades older data.
-const SCHEMA_VERSION=2;
+const SCHEMA_VERSION=3;
 const Store={KEY:"orchard_ventures_3d_v1",_mem:null,
   read(){try{const r=localStorage.getItem(this.KEY);return r?JSON.parse(r):null;}catch(e){return this._mem;}},
   write(d){try{localStorage.setItem(this.KEY,JSON.stringify(d));}catch(e){this._mem=d;}}};
@@ -685,29 +686,36 @@ function curOrchard(){return curOrchardOf(state);}
      • v0 { trees:[...] }          → wrap each tree in a plot
      • v0/v1 { plots, selected }   → wrap plots in a single "My Orchard"
      • per-tree                    → add entries/timeUnit/notes/care (migrateTree)
-     • add settings (currency/location), team, and a version stamp                */
+     • v2 → v3: settings & team move onto each orchard (per-orchard basis). Any old
+       top-level settings/team are inherited as each orchard's starting values, so
+       existing single-config saves carry over unchanged.                          */
 function migrateStore(raw){
   raw=raw||{};
   let orchards;
   if(Array.isArray(raw.orchards)&&raw.orchards.length){
     orchards=raw.orchards.map(o=>({id:o.id||uid(),name:o.name||"Orchard",
-      plots:Array.isArray(o.plots)?o.plots:[],selectedPlotId:o.selectedPlotId||null}));
+      plots:Array.isArray(o.plots)?o.plots:[],selectedPlotId:o.selectedPlotId||null,
+      settings:normalizeSettings(o.settings||raw.settings),team:normalizeTeam(o.team||raw.team)}));
   }else{
     let plots;
     if(Array.isArray(raw.plots))plots=raw.plots;
     else if(Array.isArray(raw.trees))plots=raw.trees.map(t=>({id:uid(),tree:t}));   // earliest format
     else plots=[{id:uid(),tree:null},{id:uid(),tree:null},{id:uid(),tree:null}];
-    orchards=[{id:uid(),name:"My Orchard",plots,selectedPlotId:raw.selectedPlotId||null}];
+    orchards=[{id:uid(),name:"My Orchard",plots,selectedPlotId:raw.selectedPlotId||null,
+      settings:normalizeSettings(raw.settings),team:normalizeTeam(raw.team)}];
   }
   orchards.forEach(o=>o.plots.forEach(p=>{if(p.tree)migrateTree(p.tree);}));
   return {orchards,
     currentOrchardId:(raw.currentOrchardId&&orchards.some(o=>o.id===raw.currentOrchardId))?raw.currentOrchardId:orchards[0].id,
-    sortBy:raw.sortBy||"profit",settings:normalizeSettings(raw.settings),team:normalizeTeam(raw.team),version:SCHEMA_VERSION};
+    sortBy:raw.sortBy||"profit",version:SCHEMA_VERSION};
 }
 function buildState(){
   const obj=migrateStore(Store.read());
   Object.defineProperty(obj,"plots",{get(){return curOrchardOf(obj).plots;},set(v){curOrchardOf(obj).plots=v;}});
   Object.defineProperty(obj,"selectedPlotId",{get(){return curOrchardOf(obj).selectedPlotId;},set(v){curOrchardOf(obj).selectedPlotId=v;}});
+  // settings (currency/location/season) and team are per-orchard; these always point at the active one
+  Object.defineProperty(obj,"settings",{get(){return curOrchardOf(obj).settings;},set(v){curOrchardOf(obj).settings=v;}});
+  Object.defineProperty(obj,"team",{get(){return curOrchardOf(obj).team;},set(v){curOrchardOf(obj).team=v;}});
   return obj;
 }
 let state=buildState();
@@ -717,7 +725,7 @@ function normalizeTeam(t){if(!Array.isArray(t))return[];const ids=new Set(t.map(
     parentId:(m.parentId&&ids.has(m.parentId)&&m.parentId!==m.id)?m.parentId:null,
     tasks:Array.isArray(m.tasks)?m.tasks.filter(k=>k&&typeof k.text==="string").map(k=>({id:k.id||uid(),text:k.text,done:!!k.done})):[]}));}
 function settingsGet(k){return (state&&state.settings?state.settings:normalizeSettings(null))[k];}
-function save(){Store.write({orchards:state.orchards,currentOrchardId:state.currentOrchardId,sortBy:state.sortBy,settings:state.settings,team:state.team,version:SCHEMA_VERSION});}
+function save(){Store.write({orchards:state.orchards,currentOrchardId:state.currentOrchardId,sortBy:state.sortBy,version:SCHEMA_VERSION});}
 
 /* ---------- Derived ---------- */
 function newTree(speciesKey){const sp=SPECIES[speciesKey];return{species:speciesKey,venture:sp.name+" Venture",
@@ -1532,10 +1540,14 @@ function renderOrchardBar(){
     </div>`;
 }
 function switchOrchard(id){if(!state.orchards.some(o=>o.id===id))return;state.currentOrchardId=id;save();
+  applyCurrency();updateSeasonHUD();nextWxAt=performance.now()+600;   // the new orchard's own settings take effect
   buildOrchard();fitCamera();updateSelectionRings();renderOrchardBar();renderStats();renderBoard();renderPanel();}
 function newOrchard(){
-  const o={id:uid(),name:"Orchard "+(state.orchards.length+1),plots:[{id:uid(),tree:null},{id:uid(),tree:null},{id:uid(),tree:null}],selectedPlotId:null};
+  // a fresh orchard starts from a copy of the current one's settings (convenient) but its own empty team
+  const o={id:uid(),name:"Orchard "+(state.orchards.length+1),plots:[{id:uid(),tree:null},{id:uid(),tree:null},{id:uid(),tree:null}],selectedPlotId:null,
+    settings:normalizeSettings(curOrchard().settings),team:[]};
   state.orchards.push(o);state.currentOrchardId=o.id;save();
+  applyCurrency();updateSeasonHUD();nextWxAt=performance.now()+600;
   buildOrchard();fitCamera();updateSelectionRings();renderOrchardBar();renderStats();renderBoard();renderPanel();toast("🌳 New orchard added");}
 function renameOrchard(){const o=curOrchard();const name=prompt("Rename orchard",o.name);
   if(name!==null){o.name=name.trim()||o.name;save();renderOrchardBar();}}
@@ -1810,9 +1822,9 @@ function renderTeamModal(){
   const roots=teamChildren(null);
   const tree=roots.length?roots.map(r=>teamNodeHTML(r,0)).join(""):`<div class="tm-empty">No cultivators yet. Add the farm owner or manager to start your organization tree. 🌱</div>`;
   const totalTasks=state.team.reduce((a,m)=>a+m.tasks.length,0);const doneTasks=state.team.reduce((a,m)=>a+m.tasks.filter(k=>k.done).length,0);
-  modalRoot.innerHTML=`<div class="overlay"><div class="modal" style="max-width:620px"><div class="mhead"><h2>👥 Cultivators &amp; roles</h2><button class="iconbtn" data-close>✕</button></div>
+  modalRoot.innerHTML=`<div class="overlay"><div class="modal" style="max-width:620px"><div class="mhead"><h2>👥 Cultivators &amp; roles <span class="mhead-sub">· ${esc(curOrchard().name)}</span></h2><button class="iconbtn" data-close>✕</button></div>
   <div class="mbody">
-    <p style="margin:0 0 12px;color:var(--ink-soft);font-size:13px">Build your farm's organization tree — add farmers and cultivators, set each one's role and who they report to, and track their tasks. ${state.team.length?`<b>${state.team.length}</b> people · <b>${doneTasks}/${totalTasks}</b> tasks done.`:''}</p>
+    <p style="margin:0 0 12px;color:var(--ink-soft);font-size:13px">Build the organization tree for <b>${esc(curOrchard().name)}</b> — each orchard keeps its own cultivators. Add farmers, set each one's role and who they report to, and track their tasks. ${state.team.length?`<b>${state.team.length}</b> people · <b>${doneTasks}/${totalTasks}</b> tasks done.`:''}</p>
     <div class="tm-tree">${tree}</div>
     <button class="btn primary" data-team-add style="margin-top:14px">＋ Add cultivator</button>
   </div></div></div>`;
@@ -1841,8 +1853,9 @@ function openSettings(){
   const curSeason=(s.season&&s.season!=="auto"&&seasonKeys.includes(s.season))?s.season:"auto";
   const seasonOpts=`<option value="auto" ${curSeason==="auto"?'selected':''}>🗓️ Auto — follow real-world date</option>`+
     seasonKeys.map(k=>`<option value="${k}" ${curSeason===k?'selected':''}>${SEASONS[k].emoji} ${SEASONS[k].label}</option>`).join("");
-  modalRoot.innerHTML=`<div class="overlay"><div class="modal" style="max-width:460px"><div class="mhead"><h2>🌍 Settings</h2><button class="iconbtn" data-close>✕</button></div>
+  modalRoot.innerHTML=`<div class="overlay"><div class="modal" style="max-width:460px"><div class="mhead"><h2>🌍 Settings <span class="mhead-sub">· ${esc(curOrchard().name)}</span></h2><button class="iconbtn" data-close>✕</button></div>
   <div class="mbody">
+    <p class="sethint" style="margin-top:0">These settings apply to <b>${esc(curOrchard().name)}</b> only — each orchard has its own location, currency and season.</p>
     <div class="setrow"><label>Location</label>
       <select data-setting="location" class="setsel">${locOpts}</select></div>
     <p class="sethint">Sets the hemisphere and climate that drive the season and weather. Changing location also switches the currency to the local one — you can override it below.</p>
@@ -1880,12 +1893,12 @@ function showConfirm(title,msg,onYes){modalRoot._yes=onYes;
   <div style="display:flex;gap:10px;justify-content:flex-end"><button class="btn ghost" data-close>Cancel</button><button class="btn primary" id="confirmYes">Yes, continue</button></div></div></div></div>`;
 }
 let toastTimer;function toast(m){const el=document.getElementById("toast");el.textContent=m;el.classList.add("show");clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove("show"),2200);}
-function exportData(){const blob=new Blob([JSON.stringify({orchards:state.orchards,currentOrchardId:state.currentOrchardId,sortBy:state.sortBy,settings:state.settings,team:state.team},null,2)],{type:"application/json"});
+function exportData(){const blob=new Blob([JSON.stringify({orchards:state.orchards,currentOrchardId:state.currentOrchardId,sortBy:state.sortBy,version:SCHEMA_VERSION},null,2)],{type:"application/json"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="orchard-ventures-backup.json";a.click();URL.revokeObjectURL(a.href);toast("⬇️ Backup downloaded");}
 function importData(file){const fr=new FileReader();fr.onload=()=>{try{const d=JSON.parse(fr.result);
   if(!d||(!Array.isArray(d.orchards)&&!Array.isArray(d.plots)&&!Array.isArray(d.trees)))throw 0;
   const m=migrateStore(d);   // upgrade the backup to the current schema, whatever version it came from
-  state.orchards=m.orchards;state.currentOrchardId=m.currentOrchardId;state.sortBy=m.sortBy;state.settings=m.settings;state.team=m.team;applyCurrency();updateSeasonHUD();save();
+  state.orchards=m.orchards;state.currentOrchardId=m.currentOrchardId;state.sortBy=m.sortBy;applyCurrency();updateSeasonHUD();save();
   buildOrchard();fitCamera();updateSelectionRings();renderOrchardBar();renderStats();renderBoard();renderPanel();syncSort();toast("⬆️ Orchard restored");}
   catch(e){toast("⚠️ Could not read that file");}};fr.readAsText(file);}
 function resetAll(){showConfirm("Clear this orchard?","Every plot, venture and record in the current orchard will be deleted. Consider a Backup first.",()=>{
