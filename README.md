@@ -6,9 +6,6 @@ Plant a seed for each idea, tick off the milestones it needs to grow, then harve
 
 It's a single self-contained HTML file — no build step, no server, no install. Just open it in a browser.
 
-<!-- Tip: add a screenshot named screenshot.png to the repo, then uncomment the line below -->
-<!-- ![Orchard Ventures](screenshot.png) -->
-
 ## ✨ Features
 
 - **3D orchard (Three.js / WebGL)** — real ground and shadows; trees grow through life stages from seed → sprout → tree → fruiting.
@@ -50,8 +47,7 @@ Everything stays on your device. No account, no server, no tracking. Your data l
 ## 📁 Files
 
 - `orchard-3d.html` — the main 3D app.
-- `orchard-ventures.html` — an earlier, lighter 2.5D version (optional; remove this line if you don't include it).
 
 ## 📄 License
 
-Released under the MIT License — free to use, modify, and share. Add a `LICENSE` file to make it official.
+Released under the MIT License — free to use, modify, and share.
