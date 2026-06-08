@@ -1055,8 +1055,11 @@ function updateLabels(){
     const sx=(_v.x*0.5+0.5)*W, sy=(-_v.y*0.5+0.5)*H;
     if(sx<-60||sx>W+60||sy<-40||sy>H+40){el.style.display="none";continue;}
     el.style.display="block";el.style.left=sx+"px";el.style.top=sy+"px";
-    // stack so nearer labels sit on top regardless of orchard rotation
-    el.style.zIndex=Math.round((1-depth)*100000);
+    // tie each label's stacking order to its tree's depth: labels on nearer trees sit on
+    // top of labels on farther trees, regardless of orchard rotation. Kept inside a bounded
+    // band so labels never escape above the docks/HUD or the settings/team modals.
+    const dn=Math.max(0,Math.min(1,(1-depth)/2));   // 0 (farthest) … 1 (nearest)
+    el.style.zIndex=String(10+Math.round(dn*9989)); // 10 … 9999
     // fade with distance
     const d=camera.position.distanceTo(_v.setFromMatrixPosition(anchor.matrixWorld));
     el.style.opacity=Math.max(0.25,Math.min(1,1.4-(camRadius-22)/60));
