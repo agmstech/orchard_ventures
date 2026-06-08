@@ -404,7 +404,7 @@ header.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom
             <div class="grp"><button class="i3 sm" data-cam="rx+" title="Tilt X +">⤒</button><button class="i3 sm" data-cam="rx-" title="Tilt X −">⤓</button></div>
             <div class="grp"><button class="i3 sm" data-cam="rz-" title="Roll Z −">↺</button><button class="i3 sm" data-cam="rz+" title="Roll Z +">↻</button></div>
             <div class="divider"></div>
-            <div class="grp"><button class="i3" data-cam="roots" id="btnRoots" title="Dive below the soil to see the roots">🪵</button><button class="i3" data-cam="reset" title="Reset view">⌂</button><button class="i3 on" id="btnNames" title="Show / hide venture names">📛</button><button class="i3 on" id="btnLabels" title="Show / hide info labels">🏷️</button></div>
+            <div class="grp"><button class="i3" data-cam="reset" title="Reset view">⌂</button><button class="i3 on" id="btnNames" title="Show / hide venture names">📛</button><button class="i3 on" id="btnLabels" title="Show / hide info labels">🏷️</button></div>
           </div>
 
           <!-- world dock -->
@@ -1162,7 +1162,6 @@ function updateUnderground(){
   }else if(undergroundNow){
     scene.fog.near=40;scene.fog.far=180;   // restore range on surfacing; updateSky sets the color
   }
-  if(under!==undergroundNow){const br=document.getElementById("btnRoots");if(br)br.classList.toggle("on",under);}
   undergroundNow=under;
 }
 
@@ -2203,17 +2202,7 @@ document.querySelector(".dock.view").addEventListener("click",e=>{const b=e.targ
   else if(c==="ry+")world.rotation.y+=Math.PI/12;else if(c==="ry-")world.rotation.y-=Math.PI/12;
   else if(c==="rx+")world.rotation.x+=Math.PI/15;else if(c==="rx-")world.rotation.x-=Math.PI/15;
   else if(c==="rz+")world.rotation.z+=Math.PI/15;else if(c==="rz-")world.rotation.z-=Math.PI/15;
-  else if(c==="reset"){camTheta=0.7;camPhi=1.02;world.rotation.set(0,0,0);fitCamera();}
-  else if(c==="roots")toggleUnderground();});
-function toggleUnderground(){
-  world.rotation.set(0,0,0);camTheta=0.7;
-  if(camera.position.y<0.2){   // already below → surface
-    camPhi=1.02;fitCamera();
-  }else{                       // dive under the soil and look up at the roots
-    target.set(0,-1.4,0);camPhi=2.3;camRadius=Math.max(14,Math.min(camRadius,22));
-    toast("🪵 Below the soil — these roots grow with each venture");
-  }
-}
+  else if(c==="reset"){camTheta=0.7;camPhi=1.02;world.rotation.set(0,0,0);fitCamera();}});
 document.getElementById("btnLabels").onclick=function(){showLabels=!showLabels;this.classList.toggle("on",showLabels);};
 document.getElementById("btnNames").onclick=function(){showNames=!showNames;this.classList.toggle("on",showNames);};
 
