@@ -295,6 +295,16 @@ header.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom
 .setcard-row+.setcard-row{border-top:1px solid var(--line)}
 .setcard-row span{color:var(--ink-soft)}
 .setcard-row b{color:var(--ink);text-align:right}
+/* backups */
+.bk-switch{display:inline-flex;align-items:center;gap:7px;font-size:13px;color:var(--ink-soft);cursor:pointer}
+.btn.sm{padding:6px 10px;font-size:12px;border-radius:9px}
+.bk-list{margin-top:6px;max-height:320px;overflow:auto;display:flex;flex-direction:column;gap:8px}
+.bk-row{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1.5px solid var(--line);background:var(--paper-2);border-radius:12px;padding:9px 12px}
+.bk-row.pinned{border-color:var(--clay)}
+.bk-info{min-width:0}
+.bk-info b{display:block;font-size:13.5px;color:var(--ink)}
+.bk-info span{font-size:11.5px;color:var(--ink-soft)}
+.bk-acts{display:flex;align-items:center;gap:6px;flex:none}
 /* team / org tree */
 .tm-empty{color:var(--ink-soft);font-style:italic;font-size:13px;padding:10px 0}
 .tm-tree{display:flex;flex-direction:column;gap:8px}
@@ -353,8 +363,9 @@ header.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom
       <button class="btn" id="btnHelp">❔ How it works</button>
       <button class="btn ghost" id="btnTeam">👥 Team</button>
       <button class="btn ghost" id="btnSettings">🌍 Settings</button>
-      <button class="btn ghost" id="btnExport">⬇️ Backup</button>
-      <button class="btn ghost" id="btnImport">⬆️ Restore</button>
+      <button class="btn ghost" id="btnBackups">🗄️ Backups</button>
+      <button class="btn ghost" id="btnExport">⬇️ Export</button>
+      <button class="btn ghost" id="btnImport">⬆️ Import</button>
       <input type="file" id="fileImport" accept="application/json" hidden>
       <button class="btn ghost danger" id="btnReset">🧹 Reset</button>
     </div>
@@ -749,6 +760,7 @@ function stageInfo(t){const p=progress(t);if(isReady(t))return{key:"ripe",label:
 function topEarnerPlotId(){let best=null,bv=-Infinity;for(const p of treesPlots()){const pr=profitOf(p.tree);if(pr>bv){bv=pr;best=p;}}return(best&&bv>0)?best.id:null;}
 const DAY_MS=86400000;
 function fmtDate(ts){try{return new Date(ts).toLocaleDateString(undefined,{year:"numeric",month:"short",day:"numeric"});}catch(e){return"";}}
+function fmtDateTime(ts){try{return new Date(ts).toLocaleString(undefined,{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"});}catch(e){return"";}}
 function fmtDuration(ms){const d=ms/DAY_MS;if(d<1)return"less than a day";if(d<14)return Math.round(d)+" day"+(Math.round(d)===1?"":"s");if(d<60)return Math.round(d/7)+" weeks";return Math.round(d/30)+" months";}
 /* ---------- Care / attention ---------- */
 const CARE_DECAY=8;            // health points lost per day a venture is overdue for action
@@ -1865,8 +1877,14 @@ modalRoot.addEventListener("click",e=>{if(e.target===modalRoot.firstElementChild
   if((b=e.target.closest("[data-team-del]"))){teamDel(b.dataset.teamDel);return;}
   if((b=e.target.closest("[data-team-task-toggle]"))){teamToggleTask(b.dataset.teamTaskToggle,b.dataset.task);return;}
   if((b=e.target.closest("[data-team-task-del]"))){teamDelTask(b.dataset.teamTaskDel,b.dataset.task);return;}
-  if((b=e.target.closest("[data-team-task-add]"))){const id=b.dataset.teamTaskAdd;const inp=modalRoot.querySelector(`[data-team-taskinput="${id}"]`);teamAddTask(id,inp?inp.value:"");return;}});
+  if((b=e.target.closest("[data-team-task-add]"))){const id=b.dataset.teamTaskAdd;const inp=modalRoot.querySelector(`[data-team-taskinput="${id}"]`);teamAddTask(id,inp?inp.value:"");return;}
+  // backup actions
+  if((b=e.target.closest("[data-bkrestore]"))){restoreBackup(b.dataset.bkrestore);return;}
+  if((b=e.target.closest("[data-bkdel]"))){deleteBackup(b.dataset.bkdel);return;}
+  if((b=e.target.closest("[data-bkpin]"))){togglePinBackup(b.dataset.bkpin);return;}
+  if((b=e.target.closest("[data-bkact]"))&&b.dataset.bkact==="now"){createBackup("",{auto:false});renderBackupsModal();toast("🗄️ Backup saved");return;}});
 modalRoot.addEventListener("change",e=>{const st=e.target.dataset.setting;if(st){setSetting(st,e.target.value);return;}
+  const bk=e.target.dataset.bkcfg;if(bk){const v=bk==="enabled"?e.target.checked:parseInt(e.target.value,10);setBackupCfg({[bk]:v});renderBackupsModal();return;}
   const tp=e.target.dataset.teamParent;if(tp){teamSetParent(tp,e.target.value);return;}
   const tn=e.target.dataset.teamName;if(tn){teamSetName(tn,e.target.value);return;}
   const tr=e.target.dataset.teamRole;if(tr){teamSetRole(tr,e.target.value);return;}});
@@ -2009,13 +2027,83 @@ function showConfirm(title,msg,onYes){modalRoot._yes=onYes;
   <div style="display:flex;gap:10px;justify-content:flex-end"><button class="btn ghost" data-close>Cancel</button><button class="btn primary" id="confirmYes">Yes, continue</button></div></div></div></div>`;
 }
 let toastTimer;function toast(m){const el=document.getElementById("toast");el.textContent=m;el.classList.add("show");clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove("show"),2200);}
+/* ---------- Automatic in-browser backups ---------- */
+// Periodic snapshots of every orchard are kept in localStorage so a bad edit can be undone with a
+// click. Frequency and how long to keep them are configurable; old/excess backups are pruned.
+const BackupStore={KEY:"orchard_ventures_backups_v1",
+  read(){try{const r=localStorage.getItem(this.KEY);const a=r?JSON.parse(r):[];return Array.isArray(a)?a:[];}catch(e){return [];}},
+  write(a){try{localStorage.setItem(this.KEY,JSON.stringify(a));}catch(e){}}};
+const BACKUP_CFG_KEY="orchard_ventures_backupcfg_v1";
+const BACKUP_DEFAULTS={enabled:true,intervalHours:24,retentionDays:30,maxCount:24};
+function backupCfg(){try{const r=localStorage.getItem(BACKUP_CFG_KEY);return Object.assign({},BACKUP_DEFAULTS,(r?JSON.parse(r):null)||{});}catch(e){return Object.assign({},BACKUP_DEFAULTS);}}
+function setBackupCfg(patch){const c=Object.assign(backupCfg(),patch);try{localStorage.setItem(BACKUP_CFG_KEY,JSON.stringify(c));}catch(e){}return c;}
+function snapshotData(){return {orchards:state.orchards,currentOrchardId:state.currentOrchardId,sortBy:state.sortBy,version:SCHEMA_VERSION};}
+function backupSummary(data){try{const o=(data&&data.orchards)||[];const v=o.reduce((a,x)=>a+((x.plots||[]).filter(p=>p.tree).length),0);return `${o.length} orchard${o.length===1?'':'s'} · ${v} venture${v===1?'':'s'}`;}catch(e){return "";}}
+function pruneBackups(list){
+  const c=backupCfg();const cutoff=Date.now()-c.retentionDays*86400000;
+  const kept=list.filter(b=>b&&b.ts&&(b.pinned||b.ts>=cutoff)).sort((a,b)=>b.ts-a.ts);
+  const pinned=kept.filter(b=>b.pinned),unpinned=kept.filter(b=>!b.pinned);
+  const room=Math.max(0,c.maxCount-pinned.length);
+  return pinned.concat(unpinned.slice(0,room)).sort((a,b)=>b.ts-a.ts);
+}
+function createBackup(label,opts){
+  const list=BackupStore.read();
+  list.push({id:uid(),ts:Date.now(),label:label||"",auto:!!(opts&&opts.auto),pinned:false,data:JSON.parse(JSON.stringify(snapshotData()))});
+  BackupStore.write(pruneBackups(list));
+}
+function lastBackupTs(){const l=BackupStore.read();return l.length?Math.max(...l.map(b=>b.ts||0)):0;}
+function maybeAutoBackup(){
+  const c=backupCfg();if(!c.enabled)return;
+  if(Date.now()-lastBackupTs()>=c.intervalHours*3600000){createBackup("",{auto:true});if(backupModalOpen())renderBackupsModal();}
+}
+function restoreBackup(id){
+  const b=BackupStore.read().find(x=>x.id===id);if(!b)return;
+  showConfirm("Restore this backup?",`Your current orchards will be replaced with the snapshot from ${fmtDateTime(b.ts)} (${backupSummary(b.data)}). A safety backup of the current state is taken first.`,()=>{
+    createBackup("Before restore",{auto:true});
+    const m=migrateStore(b.data);
+    state.orchards=m.orchards;state.currentOrchardId=m.currentOrchardId;state.sortBy=m.sortBy;
+    applyCurrency();updateSeasonHUD();save();
+    buildOrchard();fitCamera();updateSelectionRings();renderOrchardBar();renderStats();renderBoard();renderPanel();syncSort();
+    closeModal();toast("⬆️ Backup restored");
+  });
+}
+function deleteBackup(id){BackupStore.write(BackupStore.read().filter(b=>b.id!==id));renderBackupsModal();}
+function togglePinBackup(id){const l=BackupStore.read();const b=l.find(x=>x.id===id);if(b){b.pinned=!b.pinned;BackupStore.write(l);renderBackupsModal();}}
+function backupModalOpen(){return !!modalRoot.querySelector("[data-backuproot]");}
+function openBackups(){renderBackupsModal();}
+function renderBackupsModal(){
+  const c=backupCfg();const list=BackupStore.read().slice().sort((a,b)=>b.ts-a.ts);
+  const intervalOpts=[[1,"Every hour"],[6,"Every 6 hours"],[12,"Every 12 hours"],[24,"Every day"],[72,"Every 3 days"],[168,"Every week"]]
+    .map(([v,l])=>`<option value="${v}" ${c.intervalHours==v?'selected':''}>${l}</option>`).join("");
+  const retentionOpts=[[7,"7 days"],[14,"14 days"],[30,"30 days"],[90,"90 days"],[365,"1 year"]]
+    .map(([v,l])=>`<option value="${v}" ${c.retentionDays==v?'selected':''}>Keep for ${l}</option>`).join("");
+  const rows=list.length?list.map(b=>`<div class="bk-row${b.pinned?' pinned':''}">
+      <div class="bk-info"><b>${fmtDateTime(b.ts)}</b><span>${b.auto?'🕒 auto':'✋ manual'}${b.label?' · '+esc(b.label):''} · ${backupSummary(b.data)}</span></div>
+      <div class="bk-acts">
+        <button class="obtn" data-bkpin="${b.id}" title="${b.pinned?'Unpin (allow auto-delete)':'Pin (never auto-delete)'}">${b.pinned?'📌':'📍'}</button>
+        <button class="btn sm primary" data-bkrestore="${b.id}">↩︎ Restore</button>
+        <button class="obtn danger" data-bkdel="${b.id}" title="Delete this backup">🗑️</button>
+      </div></div>`).join(""):`<div class="tm-empty">No backups yet. One is taken automatically on the schedule below, or use “Back up now”.</div>`;
+  const lastTs=lastBackupTs();
+  modalRoot.innerHTML=`<div class="overlay"><div class="modal" data-backuproot style="max-width:560px"><div class="mhead"><h2>🗄️ Backups</h2><button class="iconbtn" data-close>✕</button></div>
+  <div class="mbody">
+    <p style="margin:0 0 12px;color:var(--ink-soft);font-size:13px">Backups are saved inside this browser and snapshot <b>all</b> your orchards, ventures and settings. Restore any one with a click. ${lastTs?`Last backup: <b>${fmtDateTime(lastTs)}</b>.`:''}</p>
+    <div class="setrow"><label>Automatic backups</label>
+      <label class="bk-switch"><input type="checkbox" data-bkcfg="enabled" ${c.enabled?'checked':''}> <span>${c.enabled?'On':'Off'}</span></label></div>
+    <div class="setrow"><label>Frequency</label><select class="setsel" data-bkcfg="intervalHours" ${c.enabled?'':'disabled'}>${intervalOpts}</select></div>
+    <div class="setrow"><label>Retention</label><select class="setsel" data-bkcfg="retentionDays">${retentionOpts}</select></div>
+    <p class="sethint" style="margin:2px 0 12px">Up to ${c.maxCount} backups are kept; older ones are removed once past the retention period. Pinned 📌 backups are never auto-deleted.</p>
+    <button class="btn primary" data-bkact="now" style="margin-bottom:12px">＋ Back up now</button>
+    <div class="bk-list">${rows}</div>
+  </div></div></div>`;
+}
 function exportData(){const blob=new Blob([JSON.stringify({orchards:state.orchards,currentOrchardId:state.currentOrchardId,sortBy:state.sortBy,version:SCHEMA_VERSION},null,2)],{type:"application/json"});
-  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="orchard-ventures-backup.json";a.click();URL.revokeObjectURL(a.href);toast("⬇️ Backup downloaded");}
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="orchard-ventures-backup.json";a.click();URL.revokeObjectURL(a.href);toast("⬇️ Exported to file");}
 function importData(file){const fr=new FileReader();fr.onload=()=>{try{const d=JSON.parse(fr.result);
   if(!d||(!Array.isArray(d.orchards)&&!Array.isArray(d.plots)&&!Array.isArray(d.trees)))throw 0;
   const m=migrateStore(d);   // upgrade the backup to the current schema, whatever version it came from
   state.orchards=m.orchards;state.currentOrchardId=m.currentOrchardId;state.sortBy=m.sortBy;applyCurrency();updateSeasonHUD();save();
-  buildOrchard();fitCamera();updateSelectionRings();renderOrchardBar();renderStats();renderBoard();renderPanel();syncSort();toast("⬆️ Orchard restored");}
+  buildOrchard();fitCamera();updateSelectionRings();renderOrchardBar();renderStats();renderBoard();renderPanel();syncSort();toast("⬆️ Imported from file");}
   catch(e){toast("⚠️ Could not read that file");}};fr.readAsText(file);}
 function resetAll(){showConfirm("Clear this orchard?","Every plot, venture and record in the current orchard will be deleted. Consider a Backup first.",()=>{
   const o=curOrchard();o.plots=[{id:uid(),tree:null},{id:uid(),tree:null},{id:uid(),tree:null}];o.selectedPlotId=null;save();
@@ -2050,6 +2138,7 @@ document.getElementById("btnHelp").onclick=openHelp;
 document.getElementById("btnSettings").onclick=openSettings;
 document.getElementById("btnTeam").onclick=openTeam;
 document.getElementById("btnReset").onclick=resetAll;
+document.getElementById("btnBackups").onclick=openBackups;
 document.getElementById("btnExport").onclick=exportData;
 document.getElementById("btnImport").onclick=()=>document.getElementById("fileImport").click();
 document.getElementById("fileImport").addEventListener("change",e=>{if(e.target.files[0])importData(e.target.files[0]);e.target.value="";});
@@ -2095,6 +2184,9 @@ try{initThree();}catch(err){console.error(err);document.getElementById("canvasWr
 if(!treesPlots().length)setTimeout(()=>toast("👋 Tap a soil plot to plant your first venture"),600);
 // health & attention drift with real time, so refresh the banner/labels periodically without user input
 setInterval(refreshAttention,30000);
+// take an automatic backup at boot (if due) and check again periodically
+maybeAutoBackup();
+setInterval(maybeAutoBackup,5*60000);
 </script>
 </body>
 </html>
