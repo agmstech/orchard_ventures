@@ -144,6 +144,11 @@ header.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom
 .notes-saved{float:right;font-size:10px;font-weight:700;letter-spacing:.04em;color:var(--ok);opacity:0;transition:opacity .2s;text-transform:none}
 .notes-saved.show{opacity:1}
 .stagebox{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.harvest-proj{font-size:12px;color:var(--ink-soft);background:var(--paper-2);border:1px solid var(--line);border-radius:9px;padding:6px 10px;font-family:"Spline Sans",sans-serif}
+.harvest-proj b{color:var(--ink);font-weight:700}
+.harvest-proj.ready{background:#fff0c8;border-color:var(--gold);color:var(--gold-deep)}
+.harvest-proj.ready b{color:var(--gold-deep)}
+.harvest-proj.unknown{font-style:italic}
 .stagebox .badge{font-weight:700;font-size:12.5px;padding:5px 11px;border-radius:9px;background:var(--paper-2);border:1.5px solid var(--line)}
 .stagebox .badge.ripe{background:#fff0c8;border-color:var(--gold);color:var(--gold-deep)}
 .pbar{height:11px;border-radius:7px;background:var(--paper-2);overflow:hidden;border:1.5px solid var(--line);flex:1}
@@ -421,6 +426,19 @@ function stageInfo(t){const p=progress(t);if(isReady(t))return{key:"ripe",label:
   if(p===0)return{key:"seed",label:"Seed planted"};if(p<0.34)return{key:"sprout",label:"Sprouting"};
   if(p<0.67)return{key:"sapling",label:"Sapling"};return{key:"young",label:"Young tree"};}
 function topEarnerPlotId(){let best=null,bv=-Infinity;for(const p of treesPlots()){const pr=profitOf(p.tree);if(pr>bv){bv=pr;best=p;}}return(best&&bv>0)?best.id:null;}
+const DAY_MS=86400000;
+function fmtDate(ts){try{return new Date(ts).toLocaleDateString(undefined,{year:"numeric",month:"short",day:"numeric"});}catch(e){return"";}}
+function fmtDuration(ms){const d=ms/DAY_MS;if(d<1)return"less than a day";if(d<14)return Math.round(d)+" day"+(Math.round(d)===1?"":"s");if(d<60)return Math.round(d/7)+" weeks";return Math.round(d/30)+" months";}
+// Projects a harvest date from how fast requirements have been ticked since planting.
+function projectedHarvest(t){
+  if(isReady(t))return{ready:true,text:"Ready to harvest now"};
+  const p=progress(t);
+  if(p<=0)return{ready:false,unknown:true,text:"Tick a requirement to project a harvest date"};
+  const elapsed=Math.max(DAY_MS*0.25,Date.now()-(t.plantedAt||Date.now()));
+  const remainMs=(elapsed/p)*(1-p);
+  const date=Date.now()+remainMs;
+  return{ready:false,unknown:false,remainMs,date,text:"~"+fmtDuration(remainMs)+" · around "+fmtDate(date)};
+}
 function money(n){if(!isFinite(n))return CUR+"0";const neg=n<0;n=Math.abs(n);return(neg?"−":"")+CUR+n.toLocaleString("en-PH",{maximumFractionDigits:2});}
 function roiTxt(t){const r=roiOf(t);if(r===Infinity)return"∞%";return(r>=0?"+":"")+r.toFixed(0)+"%";}
 function esc(s){return String(s).replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]));}
@@ -1131,7 +1149,8 @@ function renderPanel(){
     <div class="section"><div class="stagebox">
       <span class="badge ${st.key==='ripe'?'ripe':''}">${st.key==='ripe'?'🍃 ':''}${st.label}</span>
       <div class="pbar ${ready?'ripe':''}"><i style="width:${p*100}%"></i></div>
-      <span class="progtxt">${done}/${t.reqs.length||0}</span></div></div>
+      <span class="progtxt">${done}/${t.reqs.length||0}</span></div>
+      ${(()=>{const h=projectedHarvest(t);return`<div class="harvest-proj ${h.ready?'ready':''} ${h.unknown?'unknown':''}">🗓️ <span>Projected harvest:</span> <b>${h.text}</b></div>`;})()}</div>
     <div class="section"><div class="htitle">🌱 Growth requirements <span style="font-weight:500;text-transform:none;letter-spacing:0">— tick to grow; last tick ripens the fruit</span></div>
       <div id="reqlist">${t.reqs.map(r=>`<div class="req ${r.done?'done':''}" data-reqid="${r.id}">
         <span class="drag" title="Drag to reorder">⠿</span>
