@@ -336,26 +336,26 @@ header.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom
 
 /* ---------- Species ---------- */
 const SPECIES = {
-  mango:{name:"Mango",fil:"Mangga",emoji:"🥭",canopy:0x4f8a3d,fruit:0xf2b50f},
-  banana:{name:"Banana",fil:"Saging",emoji:"🍌",canopy:0x6aa84a,fruit:0xffd23f},
-  calamansi:{name:"Calamansi",fil:"Kalamansi",emoji:"🍋",canopy:0x3f7a35,fruit:0x9bbf2e},
-  papaya:{name:"Papaya",fil:"Papaya",emoji:"🟠",canopy:0x5e9447,fruit:0xf4933b},
-  coconut:{name:"Coconut",fil:"Niyog",emoji:"🥥",canopy:0x5b8a3a,fruit:0x8a5a2b},
-  guava:{name:"Guava",fil:"Bayabas",emoji:"🟢",canopy:0x4d8a3a,fruit:0xb6d957},
-  jackfruit:{name:"Jackfruit",fil:"Langka",emoji:"🟩",canopy:0x3f7a35,fruit:0xc9a227},
-  lanzones:{name:"Lanzones",fil:"Lanzones",emoji:"🟡",canopy:0x5e9447,fruit:0xe9d8a6},
-  rambutan:{name:"Rambutan",fil:"Rambutan",emoji:"🔴",canopy:0x4f8a3d,fruit:0xd63b2f},
-  durian:{name:"Durian",fil:"Durian",emoji:"🟤",canopy:0x3f7a35,fruit:0xb08d2a},
-  mangosteen:{name:"Mangosteen",fil:"Mangosteen",emoji:"🟣",canopy:0x356b30,fruit:0x6a2c4a},
-  santol:{name:"Santol",fil:"Santol",emoji:"🟠",canopy:0x5e9447,fruit:0xe8c66b},
-  atis:{name:"Atis",fil:"Atis",emoji:"🟢",canopy:0x6aa84a,fruit:0x9fbf6b},
-  guyabano:{name:"Guyabano",fil:"Guyabano",emoji:"🟩",canopy:0x4d8a3a,fruit:0x7aa05a},
-  chico:{name:"Chico",fil:"Tsiko",emoji:"🟤",canopy:0x5b8a3a,fruit:0x8a5a3b},
-  caimito:{name:"Star Apple",fil:"Kaimito",emoji:"🟣",canopy:0x3f7a35,fruit:0x7a4a7a},
-  pomelo:{name:"Pomelo",fil:"Suha",emoji:"🍊",canopy:0x4f8a3d,fruit:0xd6e05a},
-  sampalok:{name:"Tamarind",fil:"Sampalok",emoji:"🟤",canopy:0x5e9447,fruit:0x7a4a2a},
-  avocado:{name:"Avocado",fil:"Abukado",emoji:"🥑",canopy:0x356b30,fruit:0x3f6b2a},
-  duhat:{name:"Duhat",fil:"Java Plum",emoji:"🟣",canopy:0x3f7a35,fruit:0x3a2350},
+  mango:{name:"Mango",emoji:"🥭",canopy:0x4f8a3d,fruit:0xf2b50f},
+  banana:{name:"Banana",emoji:"🍌",canopy:0x6aa84a,fruit:0xffd23f},
+  calamansi:{name:"Calamansi",emoji:"🍋",canopy:0x3f7a35,fruit:0x9bbf2e},
+  papaya:{name:"Papaya",emoji:"🟠",canopy:0x5e9447,fruit:0xf4933b},
+  coconut:{name:"Coconut",emoji:"🥥",canopy:0x5b8a3a,fruit:0x8a5a2b},
+  guava:{name:"Guava",emoji:"🟢",canopy:0x4d8a3a,fruit:0xb6d957},
+  jackfruit:{name:"Jackfruit",emoji:"🟩",canopy:0x3f7a35,fruit:0xc9a227},
+  lanzones:{name:"Lanzones",emoji:"🟡",canopy:0x5e9447,fruit:0xe9d8a6},
+  rambutan:{name:"Rambutan",emoji:"🔴",canopy:0x4f8a3d,fruit:0xd63b2f},
+  durian:{name:"Durian",emoji:"🟤",canopy:0x3f7a35,fruit:0xb08d2a},
+  mangosteen:{name:"Mangosteen",emoji:"🟣",canopy:0x356b30,fruit:0x6a2c4a},
+  santol:{name:"Santol",emoji:"🟠",canopy:0x5e9447,fruit:0xe8c66b},
+  atis:{name:"Atis",emoji:"🟢",canopy:0x6aa84a,fruit:0x9fbf6b},
+  guyabano:{name:"Guyabano",emoji:"🟩",canopy:0x4d8a3a,fruit:0x7aa05a},
+  chico:{name:"Chico",emoji:"🟤",canopy:0x5b8a3a,fruit:0x8a5a3b},
+  caimito:{name:"Star Apple",emoji:"🟣",canopy:0x3f7a35,fruit:0x7a4a7a},
+  pomelo:{name:"Pomelo",emoji:"🍊",canopy:0x4f8a3d,fruit:0xd6e05a},
+  sampalok:{name:"Tamarind",emoji:"🟤",canopy:0x5e9447,fruit:0x7a4a2a},
+  avocado:{name:"Avocado",emoji:"🥑",canopy:0x356b30,fruit:0x3f6b2a},
+  duhat:{name:"Duhat",emoji:"🟣",canopy:0x3f7a35,fruit:0x3a2350},
 };
 const DEFAULT_REQS=["Market research","Funding secured","System development","Team hired","Marketing launch"];
 const CUR="₱";
@@ -543,11 +543,24 @@ function initThree(){
 /* ----- clouds ----- */
 function makeCloud(){
   const g=new THREE.Group();
-  const m=new THREE.MeshStandardMaterial({color:0xffffff,roughness:1,metalness:0,transparent:true,opacity:.95,flatShading:true});
+  // soft, smooth-shaded puffs build a more natural cumulus shape (flat base, rounded billows on top)
+  const m=new THREE.MeshStandardMaterial({color:0xffffff,roughness:1,metalness:0,transparent:true,opacity:.92});
   g.userData.mat=m;
-  const n=3+Math.floor(Math.random()*3);
-  for(let i=0;i<n;i++){const s=4+Math.random()*5;const b=new THREE.Mesh(new THREE.IcosahedronGeometry(s,0),m);
-    b.position.set((i-n/2)*5+Math.random()*2,Math.random()*2,Math.random()*4-2);b.scale.y=0.6;g.add(b);}
+  const puffs=6+Math.floor(Math.random()*5);
+  const span=14+Math.random()*10;
+  for(let i=0;i<puffs;i++){
+    const t=i/(puffs-1);
+    // larger billows toward the centre, smaller wisps at the edges
+    const edge=Math.abs(t-0.5)*2;
+    const s=(5.5-edge*2.6)*(0.85+Math.random()*0.4);
+    const b=new THREE.Mesh(new THREE.SphereGeometry(s,12,10),m);
+    const x=(t-0.5)*span+(Math.random()-0.5)*2;
+    const y=(0.5-edge*0.5)*4+Math.random()*2;   // tops rounded, base kept low
+    const z=(Math.random()-0.5)*5;
+    b.position.set(x,Math.max(y,0.4*s),z);
+    b.scale.set(1,0.62,0.9);
+    g.add(b);
+  }
   g.position.set(-120+Math.random()*240,42+Math.random()*22,-90+Math.random()*120);
   g.userData.speed=0.4+Math.random()*0.6;g.scale.setScalar(0.8+Math.random()*0.8);
   scene.add(g);return g;
@@ -565,12 +578,26 @@ function updateClouds(dt){
 /* ----- birds ----- */
 function makeBird(rand){
   const g=new THREE.Group();
-  const bodyMat=new THREE.MeshStandardMaterial({color:0x2b2b33,roughness:.7,flatShading:true});
-  const body=new THREE.Mesh(new THREE.SphereGeometry(0.35,8,8),bodyMat);body.scale.set(1.6,0.7,0.7);g.add(body);
-  const wingGeo=new THREE.PlaneGeometry(1.7,0.6);
+  const bodyMat=new THREE.MeshStandardMaterial({color:0x2b2b33,roughness:.7});
+  // streamlined body, head, beak and a forked tail give a recognisable bird silhouette
+  const body=new THREE.Mesh(new THREE.SphereGeometry(0.32,10,8),bodyMat);body.scale.set(1.9,0.62,0.6);g.add(body);
+  const head=new THREE.Mesh(new THREE.SphereGeometry(0.2,10,8),bodyMat);head.position.set(0.62,0.08,0);g.add(head);
+  const beakMat=new THREE.MeshStandardMaterial({color:0xe7a33a,roughness:.6});
+  const beak=new THREE.Mesh(new THREE.ConeGeometry(0.07,0.26,6),beakMat);
+  beak.position.set(0.86,0.06,0);beak.rotation.z=-Math.PI/2;g.add(beak);
+  const tail=new THREE.Mesh(new THREE.ConeGeometry(0.22,0.5,4),bodyMat);
+  tail.position.set(-0.7,0.02,0);tail.rotation.z=Math.PI/2;tail.scale.set(1,1,0.35);g.add(tail);
+  // each wing is a swept, tapered triangle lying flat (XZ plane), pivoted at the shoulder
+  // so a simple rotation about the forward axis produces a natural flap
   const wingMat=new THREE.MeshStandardMaterial({color:0x33333c,side:THREE.DoubleSide,roughness:.7});
-  const wl=new THREE.Mesh(wingGeo,wingMat);wl.position.x=0.0;wl.position.z=0.6;
-  const wr=new THREE.Mesh(wingGeo,wingMat);wr.position.x=0.0;wr.position.z=-0.6;
+  function wing(sign){
+    const grp=new THREE.Group();grp.position.set(0,0.06,sign*0.16);
+    const verts=new Float32Array([0,0,0, -0.4,0,sign*1.35, 0.25,0,sign*1.05]);
+    const geo=new THREE.BufferGeometry();
+    geo.setAttribute("position",new THREE.BufferAttribute(verts,3));geo.computeVertexNormals();
+    const w=new THREE.Mesh(geo,wingMat);grp.add(w);return grp;
+  }
+  const wl=wing(1),wr=wing(-1);
   g.add(wl);g.add(wr);g.userData={wl,wr,phase:Math.random()*6};
   resetBird(g,rand);scene.add(g);return g;
 }
@@ -725,8 +752,15 @@ function makeTree(t,plotId){
     const trunk=new THREE.Mesh(new THREE.CylinderGeometry(trunkR*0.55,trunkR,trunkH,9),trunkMat);
     trunk.position.y=0.4+trunkH/2;trunk.castShadow=true;trunk.receiveShadow=true;trunk.userData.plotId=plotId;g.add(trunk);
     if(p>0.45){
-      for(const s of [1,-1]){const bl=trunkH*0.45;const br=new THREE.Mesh(new THREE.CylinderGeometry(trunkR*0.3,trunkR*0.5,bl,6),trunkMat);
-        br.position.set(s*0.3,0.4+trunkH*0.72,0);br.rotation.z=s*0.7;br.castShadow=true;g.add(br);}
+      // a few branches radiating around the trunk read fuller and more tree-like than a single pair
+      const nbr=4;const bl=trunkH*0.45;
+      for(let i=0;i<nbr;i++){
+        const ang=(i/nbr)*Math.PI*2+0.4;
+        const br=new THREE.Mesh(new THREE.CylinderGeometry(trunkR*0.28,trunkR*0.5,bl,6),trunkMat);
+        br.position.set(Math.cos(ang)*0.32,0.4+trunkH*(0.6+0.18*((i%2)?1:0)),Math.sin(ang)*0.32);
+        br.rotation.z=Math.cos(ang)*0.7;br.rotation.x=-Math.sin(ang)*0.7;
+        br.castShadow=true;g.add(br);
+      }
     }
     const cy=0.4+trunkH;const cs=0.95+p*2.5;const lm=leafMat(sp.canopy);
     const canopy=new THREE.Group();canopy.position.y=cy;
@@ -740,6 +774,7 @@ function makeTree(t,plotId){
         const u=Math.random()*Math.PI*2,v=Math.acos(2*Math.random()-1),rr=cs*0.95;
         const fx=Math.sin(v)*Math.cos(u)*rr, fy=Math.cos(v)*rr*0.85+cs*0.18, fz=Math.sin(v)*Math.sin(u)*rr;
         const f=new THREE.Mesh(new THREE.SphereGeometry(0.2,10,10),fm);
+        const fsc=0.8+Math.random()*0.5;f.scale.set(fsc,fsc*(0.95+Math.random()*0.2),fsc);
         f.position.set(fx,fy,fz);f.castShadow=true;f.userData={fruit:true,plotId:plotId};canopy.add(f);
       }
     }
@@ -1080,7 +1115,7 @@ function renderPanel(){
   panel.innerHTML=`
   <div class="phead"><div class="pe">${sp.emoji}</div>
     <div class="pnamewrap"><input class="vname" data-field="venture" value="${esc(t.venture)}" maxlength="40" />
-      <div class="sp">${sp.name} · <i>${sp.fil}</i></div></div>
+      <div class="sp">${sp.name}</div></div>
     <button class="iconbtn" data-action="delete" title="Dig up this venture">🗑️</button></div>
   <div class="pbody">
     <div class="section"><div class="stagebox">
@@ -1176,7 +1211,7 @@ modalRoot.addEventListener("click",e=>{if(e.target===modalRoot.firstElementChild
   const pick=e.target.closest("[data-pick]");if(pick){closeModal();plant(pick.dataset.pick);}
   if(e.target.id==="confirmYes"&&modalRoot._yes)modalRoot._yes();});
 function openSpeciesPicker(){
-  const cards=Object.entries(SPECIES).map(([k,s])=>`<button class="species" data-pick="${k}"><div class="e">${s.emoji}</div><div class="n">${s.name}</div><div class="f">${s.fil}</div></button>`).join("");
+  const cards=Object.entries(SPECIES).map(([k,s])=>`<button class="species" data-pick="${k}"><div class="e">${s.emoji}</div><div class="n">${s.name}</div></button>`).join("");
   modalRoot.innerHTML=`<div class="overlay"><div class="modal"><div class="mhead"><h2>🌱 Plant a venture</h2><button class="iconbtn" data-close>✕</button></div>
     <div class="mbody"><p style="margin:0 0 14px;color:var(--ink-soft);font-size:13.5px">Choose a Philippine fruit tree to represent this business idea. You can rename it after planting.</p>
     <div class="species-grid">${cards}</div></div></div></div>`;
