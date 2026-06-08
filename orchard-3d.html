@@ -69,6 +69,9 @@ header.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom
 .tag .pill{display:inline-block;margin-top:4px;font-size:9.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:2px 6px;border-radius:6px;background:var(--paper-2);color:var(--ink-soft)}
 .tag .pill.ripe{background:#fff0c8;color:var(--gold-deep)}
 .tag.king{border-color:var(--gold);box-shadow:0 0 0 2px #ffe39a88,0 8px 18px -8px #c9871288}
+.tag.no-name .tname{display:none}
+.tag.no-details .row,.tag.no-details .pill{display:none}
+.tag.no-details{min-width:0;padding:4px 9px}
 
 /* docks */
 .dock{position:absolute;background:var(--glass);border:1px solid var(--glass-line);border-radius:16px;
@@ -276,7 +279,7 @@ header.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom
             <div class="grp"><button class="i3 sm" data-cam="rx+" title="Tilt X +">⤒</button><button class="i3 sm" data-cam="rx-" title="Tilt X −">⤓</button></div>
             <div class="grp"><button class="i3 sm" data-cam="rz-" title="Roll Z −">↺</button><button class="i3 sm" data-cam="rz+" title="Roll Z +">↻</button></div>
             <div class="divider"></div>
-            <div class="grp"><button class="i3" data-cam="reset" title="Reset view">⌂</button><button class="i3" id="btnLabels" title="Toggle labels">🏷️</button></div>
+            <div class="grp"><button class="i3" data-cam="reset" title="Reset view">⌂</button><button class="i3 on" id="btnNames" title="Show / hide venture names">📛</button><button class="i3 on" id="btnLabels" title="Show / hide info labels">🏷️</button></div>
           </div>
 
           <!-- world dock -->
@@ -441,7 +444,8 @@ const DAY_SECONDS=120;          // full cycle when playing
 let weather="clear", autoWx=true, nextWxAt=performance.now()+8000;
 let windCur=0.12;               // smoothed wind level
 let rainAmt=0, cloudDark=0;     // smoothed
-let showLabels=true;
+let showLabels=true;   // info rows (invested / time / sales / stage)
+let showNames=true;    // venture name plate
 
 /* material caches */
 const leafMats={}, fruitMats={};
@@ -768,7 +772,9 @@ function updateLabels(){
   for(const plot of state.plots){
     const el=labelEls[plot.id];if(!el)continue;
     const pivot=pivots[plot.id];const anchor=pivot&&pivot.userData.anchor;
-    if(!anchor||!showLabels){el.style.display="none";continue;}
+    if(!anchor||(!showLabels&&!showNames)){el.style.display="none";continue;}
+    el.classList.toggle("no-name",!showNames);
+    el.classList.toggle("no-details",!showLabels);
     anchor.getWorldPosition(_v);_v.project(camera);
     if(_v.z>1){el.style.display="none";continue;}
     const depth=_v.z;            // NDC depth: smaller = nearer the camera
@@ -1237,6 +1243,7 @@ document.querySelector(".dock.view").addEventListener("click",e=>{const b=e.targ
   else if(c==="rz+")world.rotation.z+=Math.PI/15;else if(c==="rz-")world.rotation.z-=Math.PI/15;
   else if(c==="reset"){camTheta=0.7;camPhi=1.02;world.rotation.set(0,0,0);fitCamera();}});
 document.getElementById("btnLabels").onclick=function(){showLabels=!showLabels;this.classList.toggle("on",showLabels);};
+document.getElementById("btnNames").onclick=function(){showNames=!showNames;this.classList.toggle("on",showNames);};
 
 // world dock
 document.getElementById("btnAddPlot").onclick=addPlot;
