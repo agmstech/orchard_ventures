@@ -1041,6 +1041,20 @@ function updateLabelContent(plot){
     <span class="pill ${st.key==='ripe'?'ripe':''}">${st.key==='ripe'?'🍃 '+st.label:st.label}</span>`;
 }
 const _v=new THREE.Vector3();
+const _aw=new THREE.Vector3();        // anchor world position
+const _dir=new THREE.Vector3();       // camera → anchor direction
+const _ray=new THREE.Raycaster();
+// True when a cloud sits between the camera and the anchor (e.g. looking straight down on the
+// orchard) — so the floating label is hidden behind the cloud just like the trees beneath it.
+function cloudOccludes(anchor){
+  if(!clouds.length)return false;
+  anchor.getWorldPosition(_aw);
+  _dir.subVectors(_aw,camera.position);
+  const dist=_dir.length();if(dist<1e-3)return false;
+  _dir.multiplyScalar(1/dist);
+  _ray.set(camera.position,_dir);_ray.far=dist-0.5;
+  return _ray.intersectObjects(clouds,true).length>0;
+}
 function updateLabels(){
   const wrap=document.getElementById("canvasWrap");const W=wrap.clientWidth,H=wrap.clientHeight;
   for(const plot of state.plots){
@@ -1054,6 +1068,7 @@ function updateLabels(){
     const depth=_v.z;            // NDC depth: smaller = nearer the camera
     const sx=(_v.x*0.5+0.5)*W, sy=(-_v.y*0.5+0.5)*H;
     if(sx<-60||sx>W+60||sy<-40||sy>H+40){el.style.display="none";continue;}
+    if(cloudOccludes(anchor)){el.style.display="none";continue;}
     el.style.display="block";el.style.left=sx+"px";el.style.top=sy+"px";
     // tie each label's stacking order to its tree's depth: labels on nearer trees sit on
     // top of labels on farther trees, regardless of orchard rotation. Kept inside a bounded
