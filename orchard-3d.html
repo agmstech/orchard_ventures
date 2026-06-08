@@ -496,20 +496,35 @@ const LOCATIONS={
 let CUR="₱",CUR_LOCALE="en-PH",CUR_ZERO=false;
 function applyCurrency(){const c=CURRENCIES[settingsGet("currency")]||CURRENCIES.PHP;CUR=c.sym;CUR_LOCALE=c.locale;CUR_ZERO=!!c.zero;}
 function curLoc(){return LOCATIONS[settingsGet("location")]||LOCATIONS.manila;}
+// Season catalogue. Tropical climates use wet/dry; everywhere else cycles through four seasons.
+const SEASONS={
+  wet:{key:"wet",label:"Wet season",emoji:"🌧️"},
+  dry:{key:"dry",label:"Dry season",emoji:"🌤️"},
+  winter:{key:"winter",label:"Winter",emoji:"❄️"},
+  spring:{key:"spring",label:"Spring",emoji:"🌸"},
+  summer:{key:"summer",label:"Summer",emoji:"☀️"},
+  autumn:{key:"autumn",label:"Autumn",emoji:"🍂"},
+};
+function seasonOptionsFor(climate){return climate==="tropical"?["wet","dry"]:["winter","spring","summer","autumn"];}
 // Real-world season derived from the device's current month and the location's hemisphere/climate.
-function currentSeason(){
+function autoSeason(){
   const loc=curLoc();const m=new Date().getMonth();   // 0-11
   if(loc.climate==="tropical"){
     // wet/dry seasons; flip for the southern hemisphere
     let wet=(m>=5&&m<=10);                              // Jun–Nov (northern tropics)
     if(loc.hemisphere==="S")wet=(m>=9||m<=2);           // Oct–Mar
-    return wet?{key:"wet",label:"Wet season",emoji:"🌧️"}:{key:"dry",label:"Dry season",emoji:"🌤️"};
+    return wet?SEASONS.wet:SEASONS.dry;
   }
   // four temperate seasons
   let idx=Math.floor(((m+1)%12)/3);                    // 0 win,1 spr,2 sum,3 aut (northern)
   if(loc.hemisphere==="S")idx=(idx+2)%4;
-  return [{key:"winter",label:"Winter",emoji:"❄️"},{key:"spring",label:"Spring",emoji:"🌸"},
-          {key:"summer",label:"Summer",emoji:"☀️"},{key:"autumn",label:"Autumn",emoji:"🍂"}][idx];
+  return [SEASONS.winter,SEASONS.spring,SEASONS.summer,SEASONS.autumn][idx];
+}
+// Honours a manual season override from settings when it fits the current climate; otherwise auto.
+function currentSeason(){
+  const loc=curLoc();const ov=settingsGet("season");
+  if(ov&&ov!=="auto"&&SEASONS[ov]&&seasonOptionsFor(loc.climate).includes(ov))return SEASONS[ov];
+  return autoSeason();
 }
 // Weather probabilities reflect the location's climate and the current season.
 function weatherWeights(){
@@ -589,7 +604,7 @@ function buildState(){
   return obj;
 }
 let state=buildState();
-function normalizeSettings(s){s=s||{};return{currency:CURRENCIES[s.currency]?s.currency:"PHP",location:LOCATIONS[s.location]?s.location:"manila"};}
+function normalizeSettings(s){s=s||{};return{currency:CURRENCIES[s.currency]?s.currency:"PHP",location:LOCATIONS[s.location]?s.location:"manila",season:(s.season==="auto"||SEASONS[s.season])?s.season:"auto"};}
 function normalizeTeam(t){if(!Array.isArray(t))return[];const ids=new Set(t.map(m=>m&&m.id).filter(Boolean));
   return t.filter(m=>m&&m.id).map(m=>({id:m.id,name:typeof m.name==="string"?m.name:"New cultivator",role:typeof m.role==="string"?m.role:"Cultivator",
     parentId:(m.parentId&&ids.has(m.parentId)&&m.parentId!==m.id)?m.parentId:null,
@@ -1671,6 +1686,10 @@ function openSettings(){
   const s=normalizeSettings(state.settings);const se=currentSeason();const loc=LOCATIONS[s.location];
   const curOpts=Object.entries(CURRENCIES).map(([k,c])=>`<option value="${k}" ${k===s.currency?'selected':''}>${c.sym}  ${k} · ${c.name}</option>`).join("");
   const locOpts=Object.entries(LOCATIONS).map(([k,l])=>`<option value="${k}" ${k===s.location?'selected':''}>${l.name}</option>`).join("");
+  const seasonKeys=seasonOptionsFor(loc.climate);
+  const curSeason=(s.season&&s.season!=="auto"&&seasonKeys.includes(s.season))?s.season:"auto";
+  const seasonOpts=`<option value="auto" ${curSeason==="auto"?'selected':''}>🗓️ Auto — follow real-world date</option>`+
+    seasonKeys.map(k=>`<option value="${k}" ${curSeason===k?'selected':''}>${SEASONS[k].emoji} ${SEASONS[k].label}</option>`).join("");
   modalRoot.innerHTML=`<div class="overlay"><div class="modal" style="max-width:460px"><div class="mhead"><h2>🌍 Settings</h2><button class="iconbtn" data-close>✕</button></div>
   <div class="mbody">
     <div class="setrow"><label>Location</label>
@@ -1679,12 +1698,15 @@ function openSettings(){
     <div class="setrow"><label>Currency</label>
       <select data-setting="currency" class="setsel">${curOpts}</select></div>
     <p class="sethint">All money figures use this currency symbol and number format.</p>
+    <div class="setrow"><label>Season</label>
+      <select data-setting="season" class="setsel">${seasonOpts}</select></div>
+    <p class="sethint">Auto follows your device's real-world date. Pick a season to override it — this drives the on-screen season and biases the auto-weather.</p>
     <div class="setcard">
       <div class="setcard-row"><span>Current season</span><b>${se.emoji} ${se.label}</b></div>
       <div class="setcard-row"><span>Climate</span><b>${loc.climate.charAt(0).toUpperCase()+loc.climate.slice(1)} · ${loc.hemisphere==="N"?"Northern":"Southern"} hemisphere</b></div>
       <div class="setcard-row"><span>Weather</span><b>Auto-weather is biased toward this season &amp; climate</b></div>
     </div>
-    <p class="sethint">Seasons follow your device's real-world date. Tropical locations have wet &amp; dry seasons; temperate ones cycle through four seasons (reversed below the equator).</p>
+    <p class="sethint">On Auto, seasons follow your device's real-world date. Tropical locations have wet &amp; dry seasons; temperate ones cycle through four seasons (reversed below the equator).</p>
   </div></div></div>`;
 }
 function openHelp(){
