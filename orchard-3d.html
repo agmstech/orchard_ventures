@@ -875,6 +875,43 @@ let rainAmt=0, cloudDark=0;     // smoothed
 let showLabels=true;   // info rows (invested / time / sales / stage)
 let showNames=true;    // venture name plate
 
+/* ---------- View persistence ----------
+   The camera angle/zoom, world rotation, the name/label toggles and the weather
+   mode are remembered per browser (separate from orchard data) so the orchard
+   opens framed the way it was last left, without re-orienting on every reload. */
+const VIEW_KEY="orchard_ventures_view_v1";
+let _viewSaveT=null;
+function saveViewSettings(){
+  try{
+    const d={camTheta,camPhi,camRadius,
+      tx:target.x,ty:target.y,tz:target.z,
+      rx:world?world.rotation.x:0,ry:world?world.rotation.y:0,rz:world?world.rotation.z:0,
+      showLabels,showNames,autoWx,weather};
+    localStorage.setItem(VIEW_KEY,JSON.stringify(d));
+  }catch(e){}
+}
+// Debounced — camera drags fire continuously, so coalesce writes.
+function markViewDirty(){if(_viewSaveT)return;_viewSaveT=setTimeout(()=>{_viewSaveT=null;saveViewSettings();},500);}
+function loadViewSettings(){
+  let d;try{d=JSON.parse(localStorage.getItem(VIEW_KEY));}catch(e){d=null;}
+  if(!d)return;
+  if(Number.isFinite(d.camTheta))camTheta=d.camTheta;
+  if(Number.isFinite(d.camPhi))camPhi=d.camPhi;
+  if(Number.isFinite(d.camRadius))camRadius=d.camRadius;
+  if(Number.isFinite(d.tx)&&Number.isFinite(d.ty)&&Number.isFinite(d.tz))target.set(d.tx,d.ty,d.tz);
+  if(world&&Number.isFinite(d.rx))world.rotation.set(d.rx||0,d.ry||0,d.rz||0);
+  if(typeof d.showLabels==="boolean")showLabels=d.showLabels;
+  if(typeof d.showNames==="boolean")showNames=d.showNames;
+  if(typeof d.autoWx==="boolean")autoWx=d.autoWx;
+  if(typeof d.weather==="string")weather=d.weather;
+  // reflect the restored toggles/weather in the dock button states
+  const bl=document.getElementById("btnLabels");if(bl)bl.classList.toggle("on",showLabels);
+  const bn=document.getElementById("btnNames");if(bn)bn.classList.toggle("on",showNames);
+  document.querySelectorAll("[data-wx]").forEach(x=>x.classList.remove("on"));
+  const wxSel=autoWx?"auto":weather;
+  const wb=document.querySelector('[data-wx="'+wxSel+'"]');if(wb)wb.classList.add("on");
+}
+
 /* material caches */
 const leafMats={}, fruitMats={};
 function leafMat(c){if(!leafMats[c])leafMats[c]=new THREE.MeshStandardMaterial({color:c,roughness:.78,metalness:.02,flatShading:true});return leafMats[c];}
@@ -1563,13 +1600,13 @@ function bindCameraControls(){
   const el=document.getElementById("canvasWrap");
   el.addEventListener("pointerdown",e=>{if(e.target.closest(".dock,.hud"))return;dragging=true;lastX=e.clientX;lastY=e.clientY;el.setPointerCapture&&el.setPointerCapture(e.pointerId);});
   el.addEventListener("pointermove",e=>{if(!dragging)return;const dx=e.clientX-lastX,dy=e.clientY-lastY;lastX=e.clientX;lastY=e.clientY;
-    camTheta-=dx*0.005;camPhi-=dy*0.005;});
-  window.addEventListener("pointerup",()=>{dragging=false;});
-  el.addEventListener("wheel",e=>{e.preventDefault();camRadius*=(1+e.deltaY*0.0012);},{passive:false});
+    camTheta-=dx*0.005;camPhi-=dy*0.005;markViewDirty();});
+  window.addEventListener("pointerup",()=>{if(dragging)markViewDirty();dragging=false;});
+  el.addEventListener("wheel",e=>{e.preventDefault();camRadius*=(1+e.deltaY*0.0012);markViewDirty();},{passive:false});
   // touch pinch
   el.addEventListener("touchmove",e=>{if(e.touches.length===2){e.preventDefault();const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
-    if(pinchD)camRadius*=pinchD/d;pinchD=d;}},{passive:false});
-  el.addEventListener("touchend",()=>{pinchD=0;});
+    if(pinchD)camRadius*=pinchD/d;pinchD=d;markViewDirty();}},{passive:false});
+  el.addEventListener("touchend",()=>{pinchD=0;markViewDirty();});
   // click to select / harvest / plant
   let downX=0,downY=0;
   el.addEventListener("pointerdown",e=>{downX=e.clientX;downY=e.clientY;});
@@ -2242,9 +2279,10 @@ document.querySelector(".dock.view").addEventListener("click",e=>{const b=e.targ
   else if(c==="ry+")world.rotation.y+=Math.PI/12;else if(c==="ry-")world.rotation.y-=Math.PI/12;
   else if(c==="rx+")world.rotation.x+=Math.PI/15;else if(c==="rx-")world.rotation.x-=Math.PI/15;
   else if(c==="rz+")world.rotation.z+=Math.PI/15;else if(c==="rz-")world.rotation.z-=Math.PI/15;
-  else if(c==="reset"){camTheta=0.7;camPhi=1.02;world.rotation.set(0,0,0);fitCamera();}});
-document.getElementById("btnLabels").onclick=function(){showLabels=!showLabels;this.classList.toggle("on",showLabels);};
-document.getElementById("btnNames").onclick=function(){showNames=!showNames;this.classList.toggle("on",showNames);};
+  else if(c==="reset"){camTheta=0.7;camPhi=1.02;world.rotation.set(0,0,0);fitCamera();}
+  markViewDirty();});
+document.getElementById("btnLabels").onclick=function(){showLabels=!showLabels;this.classList.toggle("on",showLabels);markViewDirty();};
+document.getElementById("btnNames").onclick=function(){showNames=!showNames;this.classList.toggle("on",showNames);markViewDirty();};
 
 // world dock
 document.getElementById("btnAddPlot").onclick=addPlot;
@@ -2256,14 +2294,15 @@ document.getElementById("btnPlay").onclick=function(){autoTime=!autoTime;this.te
 document.querySelector(".dock.world").addEventListener("click",e=>{const b=e.target.closest("[data-wx]");if(!b)return;const w=b.dataset.wx;
   document.querySelectorAll("[data-wx]").forEach(x=>x.classList.remove("on"));
   if(w==="auto"){autoWx=true;b.classList.add("on");nextWxAt=performance.now()+1500;}
-  else{autoWx=false;weather=w;b.classList.add("on");}});
+  else{autoWx=false;weather=w;b.classList.add("on");}
+  markViewDirty();});
 
 /* boot */
 document.getElementById("appVer").textContent="v"+APP_VERSION;
 applyCurrency();updateSeasonHUD();
 syncSort();syncTimeSlider();
 renderOrchardBar();renderStats();renderBoard();renderPanel();
-try{initThree();}catch(err){console.error(err);document.getElementById("canvasWrap").innerHTML='<div style="color:#fff;padding:30px;font-family:sans-serif">3D failed to load. Try opening this file directly in a modern browser (Chrome/Edge/Firefox/Safari).<br><br>'+err+'</div>';}
+try{initThree();loadViewSettings();}catch(err){console.error(err);document.getElementById("canvasWrap").innerHTML='<div style="color:#fff;padding:30px;font-family:sans-serif">3D failed to load. Try opening this file directly in a modern browser (Chrome/Edge/Firefox/Safari).<br><br>'+err+'</div>';}
 if(!treesPlots().length)setTimeout(()=>toast("👋 Tap a soil plot to plant your first venture"),600);
 // health & attention drift with real time, so refresh the banner/labels periodically without user input
 setInterval(refreshAttention,30000);
