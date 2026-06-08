@@ -1557,18 +1557,43 @@ function refreshDerived(){
 }
 function enableReqDrag(){
   const list=document.getElementById("reqlist");if(!list)return;
-  let dragEl=null;
+  let dragEl=null,startY=0,pointerY=0,raf=0;
+  const siblings=()=>[...list.querySelectorAll(".req")].filter(r=>r!==dragEl);
   function onMove(ev){
-    if(!dragEl)return;
-    const rows=[...list.querySelectorAll(".req:not(.dragging)")];
-    const y=ev.clientY;let after=null;
-    for(const r of rows){const b=r.getBoundingClientRect();if(y<b.top+b.height/2){after=r;break;}}
-    if(after)list.insertBefore(dragEl,after);else list.appendChild(dragEl);
+    if(!dragEl)return;ev.preventDefault();pointerY=ev.clientY;
+    if(!raf)raf=requestAnimationFrame(tick);
   }
-  function onUp(){document.removeEventListener("pointermove",onMove);if(dragEl)dragEl.classList.remove("dragging");dragEl=null;commitReqOrder();}
+  function tick(){
+    raf=0;if(!dragEl)return;
+    // pick the row the pointer is currently hovering over (by its vertical midpoint)
+    const sibs=siblings();let ref=null;
+    for(const r of sibs){const b=r.getBoundingClientRect();if(pointerY<b.top+b.height/2){ref=r;break;}}
+    if(ref!==dragEl&&ref!==dragEl.nextElementSibling){
+      // FLIP: animate the other rows smoothly from their old slots to their new ones
+      const before=dragEl.getBoundingClientRect().top;
+      const firsts=sibs.map(r=>r.getBoundingClientRect().top);
+      if(ref)list.insertBefore(dragEl,ref);else list.appendChild(dragEl);
+      sibs.forEach((r,i)=>{
+        const d=firsts[i]-r.getBoundingClientRect().top;
+        if(d){r.style.transition="none";r.style.transform=`translateY(${d}px)`;
+          requestAnimationFrame(()=>{r.style.transition="transform .18s cubic-bezier(.2,.8,.3,1)";r.style.transform="";});}
+      });
+      // keep the dragged row pinned under the pointer despite its new layout slot
+      startY+=dragEl.getBoundingClientRect().top-before;
+    }
+    dragEl.style.transform=`translateY(${pointerY-startY}px)`;
+  }
+  function onUp(){
+    document.removeEventListener("pointermove",onMove);
+    if(raf){cancelAnimationFrame(raf);raf=0;}
+    if(dragEl){dragEl.classList.remove("dragging");dragEl.style.transition="";dragEl.style.transform="";}
+    list.querySelectorAll(".req").forEach(r=>{r.style.transition="";r.style.transform="";});
+    dragEl=null;commitReqOrder();
+  }
   list.addEventListener("pointerdown",ev=>{
     const h=ev.target.closest(".drag");if(!h)return;const row=h.closest(".req");if(!row)return;
-    ev.preventDefault();dragEl=row;row.classList.add("dragging");
+    ev.preventDefault();dragEl=row;startY=pointerY=ev.clientY;
+    row.classList.add("dragging");row.style.transition="none";   // dragged row tracks the pointer instantly
     document.addEventListener("pointermove",onMove);document.addEventListener("pointerup",onUp,{once:true});
   });
 }
