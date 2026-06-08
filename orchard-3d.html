@@ -528,6 +528,8 @@ function pickWeather(){const w=weatherWeights();const r=Math.random();
   if(r<w.clear)return"clear";if(r<w.clear+w.wind)return"wind";return"rain";}
 
 /* ---------- Storage ---------- */
+// Current data schema version. Bump when the saved shape changes; migrateStore() upgrades older data.
+const SCHEMA_VERSION=2;
 const Store={KEY:"orchard_ventures_3d_v1",_mem:null,
   read(){try{const r=localStorage.getItem(this.KEY);return r?JSON.parse(r):null;}catch(e){return this._mem;}},
   write(d){try{localStorage.setItem(this.KEY,JSON.stringify(d));}catch(e){this._mem=d;}}};
@@ -554,8 +556,16 @@ function migrateTree(t){
 // point at the active orchard, so the rest of the app keeps working unchanged.
 function curOrchardOf(s){return s.orchards.find(o=>o.id===s.currentOrchardId)||s.orchards[0];}
 function curOrchard(){return curOrchardOf(state);}
-function buildState(){
-  const raw=Store.read()||{};
+/* ---------- Data migration (the "update script") ----------
+   migrateStore() upgrades any saved/imported blob — from the earliest single-list
+   format right up to the current schema — into the shape the app expects. It is
+   idempotent, so running it on already-current data is harmless. Upgrades applied:
+     • v0 { trees:[...] }          → wrap each tree in a plot
+     • v0/v1 { plots, selected }   → wrap plots in a single "My Orchard"
+     • per-tree                    → add entries/timeUnit/notes/care (migrateTree)
+     • add settings (currency/location), team, and a version stamp                */
+function migrateStore(raw){
+  raw=raw||{};
   let orchards;
   if(Array.isArray(raw.orchards)&&raw.orchards.length){
     orchards=raw.orchards.map(o=>({id:o.id||uid(),name:o.name||"Orchard",
@@ -563,14 +573,17 @@ function buildState(){
   }else{
     let plots;
     if(Array.isArray(raw.plots))plots=raw.plots;
-    else if(Array.isArray(raw.trees))plots=raw.trees.map(t=>({id:uid(),tree:t}));
+    else if(Array.isArray(raw.trees))plots=raw.trees.map(t=>({id:uid(),tree:t}));   // earliest format
     else plots=[{id:uid(),tree:null},{id:uid(),tree:null},{id:uid(),tree:null}];
     orchards=[{id:uid(),name:"My Orchard",plots,selectedPlotId:raw.selectedPlotId||null}];
   }
   orchards.forEach(o=>o.plots.forEach(p=>{if(p.tree)migrateTree(p.tree);}));
-  const obj={orchards,
+  return {orchards,
     currentOrchardId:(raw.currentOrchardId&&orchards.some(o=>o.id===raw.currentOrchardId))?raw.currentOrchardId:orchards[0].id,
-    sortBy:raw.sortBy||"profit",settings:normalizeSettings(raw.settings),team:normalizeTeam(raw.team)};
+    sortBy:raw.sortBy||"profit",settings:normalizeSettings(raw.settings),team:normalizeTeam(raw.team),version:SCHEMA_VERSION};
+}
+function buildState(){
+  const obj=migrateStore(Store.read());
   Object.defineProperty(obj,"plots",{get(){return curOrchardOf(obj).plots;},set(v){curOrchardOf(obj).plots=v;}});
   Object.defineProperty(obj,"selectedPlotId",{get(){return curOrchardOf(obj).selectedPlotId;},set(v){curOrchardOf(obj).selectedPlotId=v;}});
   return obj;
@@ -582,7 +595,7 @@ function normalizeTeam(t){if(!Array.isArray(t))return[];const ids=new Set(t.map(
     parentId:(m.parentId&&ids.has(m.parentId)&&m.parentId!==m.id)?m.parentId:null,
     tasks:Array.isArray(m.tasks)?m.tasks.filter(k=>k&&typeof k.text==="string").map(k=>({id:k.id||uid(),text:k.text,done:!!k.done})):[]}));}
 function settingsGet(k){return (state&&state.settings?state.settings:normalizeSettings(null))[k];}
-function save(){Store.write({orchards:state.orchards,currentOrchardId:state.currentOrchardId,sortBy:state.sortBy,settings:state.settings,team:state.team});}
+function save(){Store.write({orchards:state.orchards,currentOrchardId:state.currentOrchardId,sortBy:state.sortBy,settings:state.settings,team:state.team,version:SCHEMA_VERSION});}
 
 /* ---------- Derived ---------- */
 function newTree(speciesKey){const sp=SPECIES[speciesKey];return{species:speciesKey,venture:sp.name+" Venture",
@@ -1679,12 +1692,9 @@ let toastTimer;function toast(m){const el=document.getElementById("toast");el.te
 function exportData(){const blob=new Blob([JSON.stringify({orchards:state.orchards,currentOrchardId:state.currentOrchardId,sortBy:state.sortBy,settings:state.settings,team:state.team},null,2)],{type:"application/json"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="orchard-ventures-backup.json";a.click();URL.revokeObjectURL(a.href);toast("⬇️ Backup downloaded");}
 function importData(file){const fr=new FileReader();fr.onload=()=>{try{const d=JSON.parse(fr.result);
-  let orchards;
-  if(Array.isArray(d.orchards)&&d.orchards.length){orchards=d.orchards.map(o=>({id:o.id||uid(),name:o.name||"Orchard",plots:Array.isArray(o.plots)?o.plots:[],selectedPlotId:o.selectedPlotId||null}));}
-  else if(Array.isArray(d.plots)){orchards=[{id:uid(),name:"My Orchard",plots:d.plots,selectedPlotId:null}];}
-  else throw 0;
-  orchards.forEach(o=>o.plots.forEach(p=>{if(p.tree)migrateTree(p.tree);}));
-  state.orchards=orchards;state.currentOrchardId=orchards[0].id;state.sortBy=d.sortBy||"profit";state.settings=normalizeSettings(d.settings);state.team=normalizeTeam(d.team);applyCurrency();updateSeasonHUD();save();
+  if(!d||(!Array.isArray(d.orchards)&&!Array.isArray(d.plots)&&!Array.isArray(d.trees)))throw 0;
+  const m=migrateStore(d);   // upgrade the backup to the current schema, whatever version it came from
+  state.orchards=m.orchards;state.currentOrchardId=m.currentOrchardId;state.sortBy=m.sortBy;state.settings=m.settings;state.team=m.team;applyCurrency();updateSeasonHUD();save();
   buildOrchard();fitCamera();updateSelectionRings();renderOrchardBar();renderStats();renderBoard();renderPanel();syncSort();toast("⬆️ Orchard restored");}
   catch(e){toast("⚠️ Could not read that file");}};fr.readAsText(file);}
 function resetAll(){showConfirm("Clear this orchard?","Every plot, venture and record in the current orchard will be deleted. Consider a Backup first.",()=>{
