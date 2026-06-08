@@ -390,7 +390,7 @@ header.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom
             <div class="grp"><button class="i3 sm" data-cam="rx+" title="Tilt X +">⤒</button><button class="i3 sm" data-cam="rx-" title="Tilt X −">⤓</button></div>
             <div class="grp"><button class="i3 sm" data-cam="rz-" title="Roll Z −">↺</button><button class="i3 sm" data-cam="rz+" title="Roll Z +">↻</button></div>
             <div class="divider"></div>
-            <div class="grp"><button class="i3" data-cam="reset" title="Reset view">⌂</button><button class="i3 on" id="btnNames" title="Show / hide venture names">📛</button><button class="i3 on" id="btnLabels" title="Show / hide info labels">🏷️</button></div>
+            <div class="grp"><button class="i3" data-cam="roots" id="btnRoots" title="Dive below the soil to see the roots">🪵</button><button class="i3" data-cam="reset" title="Reset view">⌂</button><button class="i3 on" id="btnNames" title="Show / hide venture names">📛</button><button class="i3 on" id="btnLabels" title="Show / hide info labels">🏷️</button></div>
           </div>
 
           <!-- world dock -->
@@ -794,6 +794,7 @@ let fruitMeshes=[];
 const labelEls={};
 let clouds=[],birds=[],rain=null;
 let mountains=null,sea=null;    // background scenery: a mountain range on one side, the sea opposite
+let soilCeiling=null,undergroundNow=false;   // underground (roots) view: soil "ceiling" + state flag
 
 const SPACING=7.2;
 // camera spherical
@@ -854,6 +855,12 @@ function initThree(){
   const gMat=new THREE.MeshStandardMaterial({map:grassTexture(),roughness:1,metalness:0});
   ground=new THREE.Mesh(gGeo,gMat);ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;
   world.add(ground);
+
+  // underside of the soil — only shown when the camera dips below ground, so roots read as buried
+  const ceilMat=new THREE.MeshStandardMaterial({color:0x3b2a1a,roughness:1,metalness:0,side:THREE.DoubleSide});
+  soilCeiling=new THREE.Mesh(new THREE.PlaneGeometry(400,400),ceilMat);
+  soilCeiling.rotation.x=Math.PI/2;soilCeiling.position.y=-0.04;soilCeiling.visible=false;
+  world.add(soilCeiling);
 
   // sky dome
   skyMat=new THREE.ShaderMaterial({
@@ -1083,6 +1090,27 @@ function updateScenery(el){
     mountains.userData.rockMat.color.setRGB(0.20+0.23*b,0.26+0.23*b,0.34+0.23*b);
   }
 }
+// Roots are revealed only while the camera is below the soil. Going underground also hides the
+// sky/scenery/weather and swaps to a close brown earth fog so it reads as being buried.
+function setOverheadVisible(v){
+  if(sky)sky.visible=v;if(mountains)mountains.visible=v;if(sea)sea.visible=v;
+  clouds.forEach(c=>c.visible=v);
+}
+function updateUnderground(){
+  const under=camera.position.y<0.2;
+  for(const k in pivots){const tg=pivots[k].userData.tree;if(tg&&tg.userData.roots)tg.userData.roots.visible=under;}
+  if(soilCeiling)soilCeiling.visible=under;
+  setOverheadVisible(!under);
+  if(under){
+    sunMesh.visible=false;sunGlow.visible=false;moonMesh.visible=false;stars.visible=false;
+    if(rain)rain.visible=false;birds.forEach(b=>b.visible=false);
+    scene.fog.color.setHex(0x241a10);scene.fog.near=3;scene.fog.far=60;
+  }else if(undergroundNow){
+    scene.fog.near=40;scene.fog.far=180;   // restore range on surfacing; updateSky sets the color
+  }
+  if(under!==undergroundNow){const br=document.getElementById("btnRoots");if(br)br.classList.toggle("on",under);}
+  undergroundNow=under;
+}
 
 /* ----- build orchard ----- */
 function gridPositions(n){
@@ -1163,6 +1191,31 @@ function makeCrown(){
   g.userData.spin=true;return g;
 }
 
+// Root system that mirrors the tree's growth: a taproot plus lateral roots that get
+// deeper and more numerous as progress climbs. Built hidden; revealed only underground.
+const rootMat=new THREE.MeshStandardMaterial({color:0x7a5a36,roughness:1,metalness:0,flatShading:true,emissive:0x2a1c0c,emissiveIntensity:.4});
+function makeRoots(t,plotId){
+  const p=progress(t);const g=new THREE.Group();
+  const depth=0.7+p*4.4, baseR=0.1+p*0.26;
+  const tap=new THREE.Mesh(new THREE.CylinderGeometry(baseR*0.28,baseR,depth,7),rootMat);
+  tap.position.y=-depth/2;tap.userData.plotId=plotId;g.add(tap);
+  const n=3+Math.floor(p*6);
+  for(let i=0;i<n;i++){
+    const ang=(i/n)*Math.PI*2+(i%2)*0.55;
+    const len=(0.8+p*2.8)*(0.6+Math.random()*0.6);
+    const r=baseR*(0.4+Math.random()*0.35);
+    const root=new THREE.Mesh(new THREE.CylinderGeometry(r*0.18,r,len,6),rootMat);
+    const startY=-0.15-Math.random()*depth*0.55;
+    // pivot the root at its top, splay it outward and down, then drop it to its anchor
+    root.geometry.translate(0,-len/2,0);
+    root.position.set(Math.cos(ang)*0.12,startY,Math.sin(ang)*0.12);
+    root.rotation.z=Math.cos(ang)*(0.8+Math.random()*0.6);
+    root.rotation.x=-Math.sin(ang)*(0.8+Math.random()*0.6);
+    root.userData.plotId=plotId;g.add(root);
+  }
+  g.userData.isRoots=true;
+  return g;
+}
 function makeTree(t,plotId){
   const sp=SPECIES[t.species];const p=progress(t);const ready=isReady(t);
   const g=new THREE.Group();let topY=0.4;
@@ -1211,6 +1264,7 @@ function makeTree(t,plotId){
     g.add(canopy);g.userData.canopy=canopy;g.userData.canopyY=cy;
     topY=cy+cs*0.9;
   }
+  const roots=makeRoots(t,plotId);roots.visible=undergroundNow;g.add(roots);g.userData.roots=roots;
   g.userData.topY=topY;g.userData.swayPhase=Math.random()*Math.PI*2;g.userData.plotId=plotId;
   return g;
 }
@@ -1405,7 +1459,7 @@ function fitCamera(){
   target.set(0,2.2,0);
 }
 function updateCamera(){
-  camPhi=Math.max(0.12,Math.min(1.52,camPhi));
+  camPhi=Math.max(0.12,Math.min(2.5,camPhi));   // upper range lets the camera dip below the soil to see roots
   camRadius=Math.max(10,Math.min(120,camRadius));
   camera.position.set(
     target.x+camRadius*Math.sin(camPhi)*Math.sin(camTheta),
@@ -1474,6 +1528,7 @@ function animate(){
   updateBirds(dt,el);
   updateScenery(el);
   updateCamera();
+  updateUnderground();
   renderer.render(scene,camera);
   updateLabels();
 }
@@ -2006,7 +2061,17 @@ document.querySelector(".dock.view").addEventListener("click",e=>{const b=e.targ
   else if(c==="ry+")world.rotation.y+=Math.PI/12;else if(c==="ry-")world.rotation.y-=Math.PI/12;
   else if(c==="rx+")world.rotation.x+=Math.PI/15;else if(c==="rx-")world.rotation.x-=Math.PI/15;
   else if(c==="rz+")world.rotation.z+=Math.PI/15;else if(c==="rz-")world.rotation.z-=Math.PI/15;
-  else if(c==="reset"){camTheta=0.7;camPhi=1.02;world.rotation.set(0,0,0);fitCamera();}});
+  else if(c==="reset"){camTheta=0.7;camPhi=1.02;world.rotation.set(0,0,0);fitCamera();}
+  else if(c==="roots")toggleUnderground();});
+function toggleUnderground(){
+  world.rotation.set(0,0,0);camTheta=0.7;
+  if(camera.position.y<0.2){   // already below → surface
+    camPhi=1.02;fitCamera();
+  }else{                       // dive under the soil and look up at the roots
+    target.set(0,-1.4,0);camPhi=2.3;camRadius=Math.max(14,Math.min(camRadius,22));
+    toast("🪵 Below the soil — these roots grow with each venture");
+  }
+}
 document.getElementById("btnLabels").onclick=function(){showLabels=!showLabels;this.classList.toggle("on",showLabels);};
 document.getElementById("btnNames").onclick=function(){showNames=!showNames;this.classList.toggle("on",showNames);};
 
