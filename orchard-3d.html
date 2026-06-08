@@ -273,7 +273,7 @@ header.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom
 .addentry:hover{border-color:var(--leaf);background:#f6fbf2}
 
 /* modal + toast */
-.overlay{position:fixed;inset:0;background:#2a1c10aa;backdrop-filter:blur(3px);z-index:50;display:grid;place-items:center;padding:18px;animation:fade .2s}
+.overlay{position:fixed;inset:0;background:#2a1c10aa;backdrop-filter:blur(3px);z-index:100000;display:grid;place-items:center;padding:18px;animation:fade .2s}
 @keyframes fade{from{opacity:0}to{opacity:1}}
 .modal{background:var(--paper);border-radius:20px;max-width:640px;width:100%;max-height:86vh;overflow:auto;border:2px solid #e8d6ad;box-shadow:0 30px 70px -30px #000a;animation:rise .25s cubic-bezier(.2,.8,.3,1)}
 @keyframes rise{from{transform:translateY(18px) scale(.98);opacity:.6}to{transform:none;opacity:1}}
@@ -329,7 +329,7 @@ header.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom
 .help b{color:var(--clay-deep)}
 .help .metaphor{display:grid;grid-template-columns:auto 1fr;gap:8px 14px;margin:12px 0;font-size:13px}
 .help .metaphor .k{font-weight:700;color:var(--leaf-deep)}
-.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);opacity:0;background:var(--ink);color:var(--paper);padding:11px 20px;border-radius:12px;font-size:13px;font-weight:600;z-index:80;transition:.25s;box-shadow:0 12px 30px -12px #000;pointer-events:none}
+.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);opacity:0;background:var(--ink);color:var(--paper);padding:11px 20px;border-radius:12px;font-size:13px;font-weight:600;z-index:100010;transition:.25s;box-shadow:0 12px 30px -12px #000;pointer-events:none}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 .footnote{text-align:center;font-size:11.5px;color:var(--ink-soft);margin-top:26px;font-style:italic;font-family:"Fraunces",serif}
 .repolink{text-align:center;font-size:12.5px;margin-top:6px;margin-bottom:18px;font-family:"Spline Sans",sans-serif}
