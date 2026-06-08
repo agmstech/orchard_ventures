@@ -173,6 +173,23 @@ header.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom
 .care-state.soon{color:var(--gold-deep)}
 .care-state.bad{color:var(--bad)}
 .section.care.disabled .care-health,.section.care.disabled .care-state.off{opacity:.7}
+/* orchard bar */
+.orchard-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0 0 12px}
+.orchard-tabs{display:flex;gap:7px;flex-wrap:wrap}
+.orchard-tab{border:1.5px solid var(--line);background:var(--paper-2);border-radius:11px;padding:7px 13px;font-weight:600;font-size:13px;color:var(--ink-soft);cursor:pointer;font-family:"Spline Sans",sans-serif;display:inline-flex;align-items:center;gap:7px}
+.orchard-tab:hover{border-color:var(--clay)}
+.orchard-tab.active{background:#fff;border-color:var(--leaf);color:var(--ink);box-shadow:0 4px 12px -8px #2c673066}
+.orchard-tab .ocount{background:var(--leaf);color:#fff;border-radius:20px;font-size:11px;font-weight:700;padding:1px 7px;min-width:16px;text-align:center}
+.orchard-tab .oattn{font-size:12px}
+.orchard-actions{display:flex;gap:6px}
+.obtn{border:1.5px solid var(--line);background:var(--paper-2);border-radius:9px;padding:7px 11px;font-weight:600;font-size:12.5px;color:var(--ink-soft);cursor:pointer;font-family:"Spline Sans",sans-serif}
+.obtn:hover{border-color:var(--clay);color:var(--ink)}
+.obtn.danger:hover{border-color:var(--bad);color:var(--bad)}
+.obtn.add{color:var(--leaf-deep);border-color:var(--leaf)}
+/* move venture bar */
+.movebar{display:flex;align-items:center;gap:9px;padding:9px 16px;background:var(--paper-2);border-bottom:1px solid var(--line);font-size:12.5px;color:var(--ink-soft);font-weight:600}
+.movebar .moveSel{flex:1;font-family:"Spline Sans",sans-serif;font-size:12.5px;color:var(--ink);background:var(--paper);border:1.5px solid var(--line);border-radius:8px;padding:6px 9px;cursor:pointer}
+.movebar .moveSel:focus{outline:none;border-color:var(--leaf)}
 #attnBanner{display:none}
 #attnBanner.show{display:block;margin:0 0 14px;background:linear-gradient(180deg,#fff4e2,#ffe9cf);border:1.5px solid var(--gold);border-radius:13px;padding:11px 14px;box-shadow:0 6px 18px -12px #c9871266}
 .attn-head{font-weight:700;font-size:13px;color:var(--clay-deep);font-family:"Fraunces",serif;margin-bottom:8px}
@@ -308,6 +325,7 @@ header.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom
     </div>
   </header>
 
+  <div class="orchard-bar" id="orchardBar"></div>
   <div class="stats" id="stats"></div>
   <div id="attnBanner"></div>
 
@@ -502,24 +520,35 @@ function migrateTree(t){
 }
 
 /* ---------- State (+ migration) ---------- */
-let state=(function(){
-  let s=Store.read();
-  if(s){
-    if(!s.plots){
-      if(Array.isArray(s.trees)) s.plots=s.trees.map(t=>({id:uid(),tree:t}));
-      else s.plots=[];
-    }
-    s.selectedPlotId=s.selectedPlotId||null;
-    s.sortBy=s.sortBy||"profit";
-    s.settings=normalizeSettings(s.settings);
-    s.plots.forEach(p=>{if(p.tree)migrateTree(p.tree);});
-    return s;
+// Multi-orchard model. `state.plots` / `state.selectedPlotId` are accessors that always
+// point at the active orchard, so the rest of the app keeps working unchanged.
+function curOrchardOf(s){return s.orchards.find(o=>o.id===s.currentOrchardId)||s.orchards[0];}
+function curOrchard(){return curOrchardOf(state);}
+function buildState(){
+  const raw=Store.read()||{};
+  let orchards;
+  if(Array.isArray(raw.orchards)&&raw.orchards.length){
+    orchards=raw.orchards.map(o=>({id:o.id||uid(),name:o.name||"Orchard",
+      plots:Array.isArray(o.plots)?o.plots:[],selectedPlotId:o.selectedPlotId||null}));
+  }else{
+    let plots;
+    if(Array.isArray(raw.plots))plots=raw.plots;
+    else if(Array.isArray(raw.trees))plots=raw.trees.map(t=>({id:uid(),tree:t}));
+    else plots=[{id:uid(),tree:null},{id:uid(),tree:null},{id:uid(),tree:null}];
+    orchards=[{id:uid(),name:"My Orchard",plots,selectedPlotId:raw.selectedPlotId||null}];
   }
-  return {plots:[{id:uid(),tree:null},{id:uid(),tree:null},{id:uid(),tree:null}],selectedPlotId:null,sortBy:"profit",settings:normalizeSettings(null)};
-})();
+  orchards.forEach(o=>o.plots.forEach(p=>{if(p.tree)migrateTree(p.tree);}));
+  const obj={orchards,
+    currentOrchardId:(raw.currentOrchardId&&orchards.some(o=>o.id===raw.currentOrchardId))?raw.currentOrchardId:orchards[0].id,
+    sortBy:raw.sortBy||"profit",settings:normalizeSettings(raw.settings)};
+  Object.defineProperty(obj,"plots",{get(){return curOrchardOf(obj).plots;},set(v){curOrchardOf(obj).plots=v;}});
+  Object.defineProperty(obj,"selectedPlotId",{get(){return curOrchardOf(obj).selectedPlotId;},set(v){curOrchardOf(obj).selectedPlotId=v;}});
+  return obj;
+}
+let state=buildState();
 function normalizeSettings(s){s=s||{};return{currency:CURRENCIES[s.currency]?s.currency:"PHP",location:LOCATIONS[s.location]?s.location:"manila"};}
 function settingsGet(k){return (state&&state.settings?state.settings:normalizeSettings(null))[k];}
-function save(){Store.write({plots:state.plots,selectedPlotId:state.selectedPlotId,sortBy:state.sortBy,settings:state.settings});}
+function save(){Store.write({orchards:state.orchards,currentOrchardId:state.currentOrchardId,sortBy:state.sortBy,settings:state.settings});}
 
 /* ---------- Derived ---------- */
 function newTree(speciesKey){const sp=SPECIES[speciesKey];return{species:speciesKey,venture:sp.name+" Venture",
@@ -1281,7 +1310,48 @@ function renderAttentionBanner(){
   const overdueN=list.filter(p=>careState(p.tree).overdue).length;
   el.innerHTML=`<div class="attn-head">${overdueN?'⚠️':'⏳'} ${list.length} venture${list.length>1?'s':''} need${list.length>1?'':'s'} attention${overdueN?` · ${overdueN} overdue`:''}</div><div class="attn-list">${items}</div>`;
 }
-function refreshAttention(){renderAttentionBanner();for(const plot of treesPlots()){if(labelEls[plot.id])updateLabelContent(plot);}}
+function refreshAttention(){renderAttentionBanner();renderOrchardBar();for(const plot of treesPlots()){if(labelEls[plot.id])updateLabelContent(plot);}}
+
+/* ---------- Orchards ---------- */
+function renderOrchardBar(){
+  const bar=document.getElementById("orchardBar");if(!bar)return;
+  const tabs=state.orchards.map(o=>{
+    const ventures=o.plots.filter(p=>p.tree).length;
+    const attn=o.plots.some(p=>p.tree&&needsAttention(p.tree));
+    const active=o.id===state.currentOrchardId;
+    return `<button class="orchard-tab ${active?'active':''}" data-orchard="${o.id}" title="Switch to this orchard">
+      🌳 ${esc(o.name)} <span class="ocount">${ventures}</span>${attn?'<span class="oattn">⚠️</span>':''}</button>`;
+  }).join("");
+  const multi=state.orchards.length>1;
+  bar.innerHTML=`<div class="orchard-tabs">${tabs}</div>
+    <div class="orchard-actions">
+      <button class="obtn" data-oact="rename" title="Rename current orchard">✎</button>
+      ${multi?'<button class="obtn danger" data-oact="delete" title="Delete current orchard">🗑️</button>':''}
+      <button class="obtn add" data-oact="new" title="Add a new orchard">＋ Orchard</button>
+    </div>`;
+}
+function switchOrchard(id){if(!state.orchards.some(o=>o.id===id))return;state.currentOrchardId=id;save();
+  buildOrchard();fitCamera();updateSelectionRings();renderOrchardBar();renderStats();renderBoard();renderPanel();}
+function newOrchard(){
+  const o={id:uid(),name:"Orchard "+(state.orchards.length+1),plots:[{id:uid(),tree:null},{id:uid(),tree:null},{id:uid(),tree:null}],selectedPlotId:null};
+  state.orchards.push(o);state.currentOrchardId=o.id;save();
+  buildOrchard();fitCamera();updateSelectionRings();renderOrchardBar();renderStats();renderBoard();renderPanel();toast("🌳 New orchard added");}
+function renameOrchard(){const o=curOrchard();const name=prompt("Rename orchard",o.name);
+  if(name!==null){o.name=name.trim()||o.name;save();renderOrchardBar();}}
+function deleteOrchard(){if(state.orchards.length<=1)return;const o=curOrchard();
+  showConfirm("Delete this orchard?",`“${esc(o.name)}” and all its ventures will be permanently removed.`,()=>{
+    state.orchards=state.orchards.filter(x=>x.id!==o.id);state.currentOrchardId=state.orchards[0].id;save();
+    buildOrchard();fitCamera();updateSelectionRings();renderOrchardBar();renderStats();renderBoard();renderPanel();closeModal();toast("🗑️ Orchard deleted");});}
+// Moves the selected venture (the tree) into another orchard, filling an empty plot or adding one.
+function moveVentureToOrchard(targetId){
+  const plot=selectedPlot();if(!plot||!plot.tree)return;
+  const target=state.orchards.find(o=>o.id===targetId);if(!target||target.id===state.currentOrchardId)return;
+  const tree=plot.tree;
+  let dest=target.plots.find(p=>!p.tree);
+  if(dest)dest.tree=tree;else{dest={id:uid(),tree:tree};target.plots.push(dest);}
+  plot.tree=null;curOrchard().selectedPlotId=null;save();
+  buildOrchard();updateSelectionRings();renderOrchardBar();renderStats();renderBoard();renderPanel();
+  toast(`🚚 Moved to “${target.name}”`);}
 function cmpRoi(t){const r=roiOf(t);return r===Infinity?1e12:r;}
 function renderBoard(){
   const root=document.getElementById("board");const P=treesPlots();
@@ -1294,6 +1364,13 @@ function renderBoard(){
       <div class="pos">${first?'👑':i+1}</div><div class="emo">${sp.emoji}</div>
       <div class="info"><div class="nm">${esc(t.venture)}</div><div class="meta">${sp.name} · ${stageInfo(t).label} · ${t.picked}/${t.fruitCount} sold</div></div>
       <div class="money"><div class="p ${cls}">${money(pr)}</div><div class="roi">ROI ${roiTxt(t)}</div></div></div>`;}).join("");
+}
+function moveBarHTML(){
+  if(state.orchards.length<2)return"";
+  const opts=state.orchards.filter(o=>o.id!==state.currentOrchardId)
+    .map(o=>`<option value="${o.id}">${esc(o.name)}</option>`).join("");
+  return `<div class="movebar"><span>🚚 Move venture to</span>
+    <select class="moveSel" data-move><option value="">choose orchard…</option>${opts}</select></div>`;
 }
 function careSectionHTML(t){
   const c=careCfg(t);const s=careState(t);
@@ -1329,6 +1406,7 @@ function renderPanel(){
     <div class="pnamewrap"><input class="vname" data-field="venture" value="${esc(t.venture)}" maxlength="40" />
       <div class="sp">${sp.name}</div></div>
     <button class="iconbtn" data-action="delete" title="Dig up this venture">🗑️</button></div>
+  ${moveBarHTML()}
   <div class="pbody">
     <div class="section"><div class="stagebox">
       <span class="badge ${st.key==='ripe'?'ripe':''}">${st.key==='ripe'?'🍃 ':''}${st.label}</span>
@@ -1491,14 +1569,19 @@ function showConfirm(title,msg,onYes){modalRoot._yes=onYes;
   <div style="display:flex;gap:10px;justify-content:flex-end"><button class="btn ghost" data-close>Cancel</button><button class="btn primary" id="confirmYes">Yes, continue</button></div></div></div></div>`;
 }
 let toastTimer;function toast(m){const el=document.getElementById("toast");el.textContent=m;el.classList.add("show");clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove("show"),2200);}
-function exportData(){const blob=new Blob([JSON.stringify({plots:state.plots,sortBy:state.sortBy,settings:state.settings},null,2)],{type:"application/json"});
+function exportData(){const blob=new Blob([JSON.stringify({orchards:state.orchards,currentOrchardId:state.currentOrchardId,sortBy:state.sortBy,settings:state.settings},null,2)],{type:"application/json"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="orchard-ventures-backup.json";a.click();URL.revokeObjectURL(a.href);toast("⬇️ Backup downloaded");}
-function importData(file){const fr=new FileReader();fr.onload=()=>{try{const d=JSON.parse(fr.result);if(!d||!Array.isArray(d.plots))throw 0;
-  state.plots=d.plots;state.plots.forEach(p=>{if(p.tree)migrateTree(p.tree);});state.selectedPlotId=null;state.sortBy=d.sortBy||"profit";state.settings=normalizeSettings(d.settings);applyCurrency();updateSeasonHUD();save();
-  buildOrchard();fitCamera();updateSelectionRings();renderStats();renderBoard();renderPanel();syncSort();toast("⬆️ Orchard restored");}
+function importData(file){const fr=new FileReader();fr.onload=()=>{try{const d=JSON.parse(fr.result);
+  let orchards;
+  if(Array.isArray(d.orchards)&&d.orchards.length){orchards=d.orchards.map(o=>({id:o.id||uid(),name:o.name||"Orchard",plots:Array.isArray(o.plots)?o.plots:[],selectedPlotId:o.selectedPlotId||null}));}
+  else if(Array.isArray(d.plots)){orchards=[{id:uid(),name:"My Orchard",plots:d.plots,selectedPlotId:null}];}
+  else throw 0;
+  orchards.forEach(o=>o.plots.forEach(p=>{if(p.tree)migrateTree(p.tree);}));
+  state.orchards=orchards;state.currentOrchardId=orchards[0].id;state.sortBy=d.sortBy||"profit";state.settings=normalizeSettings(d.settings);applyCurrency();updateSeasonHUD();save();
+  buildOrchard();fitCamera();updateSelectionRings();renderOrchardBar();renderStats();renderBoard();renderPanel();syncSort();toast("⬆️ Orchard restored");}
   catch(e){toast("⚠️ Could not read that file");}};fr.readAsText(file);}
-function resetAll(){showConfirm("Clear the whole orchard?","Every plot, venture and record will be deleted. Consider a Backup first.",()=>{
-  state={plots:[{id:uid(),tree:null},{id:uid(),tree:null},{id:uid(),tree:null}],selectedPlotId:null,sortBy:"profit",settings:normalizeSettings(state.settings)};save();
+function resetAll(){showConfirm("Clear this orchard?","Every plot, venture and record in the current orchard will be deleted. Consider a Backup first.",()=>{
+  const o=curOrchard();o.plots=[{id:uid(),tree:null},{id:uid(),tree:null},{id:uid(),tree:null}];o.selectedPlotId=null;save();
   buildOrchard();fitCamera();updateSelectionRings();renderStats();renderBoard();renderPanel();closeModal();toast("🧹 Orchard cleared");});}
 
 /* =================================================================
@@ -1507,6 +1590,10 @@ function resetAll(){showConfirm("Clear the whole orchard?","Every plot, venture 
 // board
 document.getElementById("board").addEventListener("click",e=>{const r=e.target.closest("[data-plot]");if(r){state.selectedPlotId=r.dataset.plot;save();updateSelectionRings();renderPanel();}});
 document.getElementById("attnBanner").addEventListener("click",e=>{const b=e.target.closest("[data-attnplot]");if(b)onPlotClick(b.dataset.attnplot);});
+document.getElementById("orchardBar").addEventListener("click",e=>{
+  const tab=e.target.closest("[data-orchard]");if(tab){switchOrchard(tab.dataset.orchard);return;}
+  const act=e.target.closest("[data-oact]");if(!act)return;const a=act.dataset.oact;
+  if(a==="new")newOrchard();else if(a==="rename")renameOrchard();else if(a==="delete")deleteOrchard();});
 function syncSort(){document.querySelectorAll(".sortrow button").forEach(b=>b.classList.toggle("on",b.dataset.sort===state.sortBy));}
 document.querySelector(".sortrow").addEventListener("click",e=>{const b=e.target.closest("[data-sort]");if(!b)return;state.sortBy=b.dataset.sort;save();syncSort();renderBoard();});
 // panel
@@ -1518,7 +1605,8 @@ panel.addEventListener("click",e=>{const tog=e.target.closest("[data-reqtoggle]"
   else if(act==="harvestAll")harvestAll();else if(act==="resetHarvest")resetHarvest();else if(act==="delete")deleteVenture();
   else if(act==="addEntry")addEntry();else if(act==="delEntry")delEntry(arg);
   else if(act==="careDone")doCare();});
-panel.addEventListener("change",e=>{if(e.target.dataset.action==="careToggle")setCareEnabled(e.target.checked);});
+panel.addEventListener("change",e=>{if(e.target.dataset.action==="careToggle")setCareEnabled(e.target.checked);
+  if(e.target.hasAttribute("data-move")&&e.target.value)moveVentureToOrchard(e.target.value);});
 panel.addEventListener("keydown",e=>{if(e.target.id==="newReq"&&e.key==="Enter"){e.preventDefault();addReqFromInput();}});
 // toolbar
 document.getElementById("btnHelp").onclick=openHelp;
@@ -1554,7 +1642,7 @@ document.querySelector(".dock.world").addEventListener("click",e=>{const b=e.tar
 /* boot */
 applyCurrency();updateSeasonHUD();
 syncSort();syncTimeSlider();
-renderStats();renderBoard();renderPanel();
+renderOrchardBar();renderStats();renderBoard();renderPanel();
 try{initThree();}catch(err){console.error(err);document.getElementById("canvasWrap").innerHTML='<div style="color:#fff;padding:30px;font-family:sans-serif">3D failed to load. Try opening this file directly in a modern browser (Chrome/Edge/Firefox/Safari).<br><br>'+err+'</div>';}
 if(!treesPlots().length)setTimeout(()=>toast("👋 Tap a soil plot to plant your first venture"),600);
 // health & attention drift with real time, so refresh the banner/labels periodically without user input
