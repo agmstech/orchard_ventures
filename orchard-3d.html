@@ -1105,7 +1105,8 @@ function buildScenery(){
   mountains=new THREE.Group();
   const rockMat=new THREE.MeshStandardMaterial({color:0x6d7c92,roughness:1,metalness:0,flatShading:true,fog:false});
   const snowMat=new THREE.MeshStandardMaterial({color:0xeef3fb,roughness:.9,metalness:0,flatShading:true,fog:false});
-  mountains.userData={rockMat,snowMat};
+  const caps=[];   // snow caps, shown only in winter
+  mountains.userData={rockMat,snowMat,caps};
   // a row of overlapping peaks of varying size/height across the horizon
   const peaks=[[-150,46,52],[-95,62,70],[-40,40,46],[20,70,80],[78,52,60],[140,44,50]];
   peaks.forEach(([x,r,h],i)=>{
@@ -1114,14 +1115,15 @@ function buildScenery(){
     cone.position.set(x,h/2-2,-185-((i%3)*14));
     cone.rotation.y=i*0.7;
     mountains.add(cone);
-    if(h>=60){   // snowy cap on the tallest peaks
+    if(h>=46){   // a snowy cap that only shows in winter (see updateMountainSnow)
       const cap=new THREE.Mesh(new THREE.ConeGeometry(r*0.42,h*0.32,seg,1),snowMat);
       cap.position.set(x,h-h*0.16-2,-185-((i%3)*14));
       cap.rotation.y=cone.rotation.y;
-      mountains.add(cap);
+      mountains.add(cap);caps.push(cap);
     }
   });
   scene.add(mountains);
+  updateMountainSnow();
 
   // ----- sea (opposite side, +Z) -----
   const seaGeo=new THREE.PlaneGeometry(760,300,40,18);
@@ -1150,6 +1152,13 @@ function updateScenery(el){
     const b=Math.max(0.18,dayBright);
     mountains.userData.rockMat.color.setRGB(0.20+0.23*b,0.26+0.23*b,0.34+0.23*b);
   }
+}
+// Snow caps the peaks only during winter; every other season (and tropical/arid
+// climates, which never reach winter) leaves the mountains bare rock.
+function updateMountainSnow(){
+  if(!mountains||!mountains.userData.caps)return;
+  const snowy=currentSeason().key==="winter";
+  mountains.userData.caps.forEach(c=>{c.visible=snowy;});
 }
 // Roots are revealed only while the camera is below the soil. Going underground also hides the
 // sky/scenery/weather and swaps to a close brown earth fog so it reads as being buried.
@@ -1477,17 +1486,27 @@ function updateClockUI(time,star){
    WEATHER
    ================================================================= */
 function setWeather(w){weather=w;}
+// A weather spell lasts minutes, not seconds — calm/clear stretches run longest,
+// wind a while, and rain passes through more briefly, like real weather systems.
+function weatherDwellMs(w){
+  if(w==="rain")return 90000+Math.random()*90000;    // 1.5–3 min
+  if(w==="wind")return 120000+Math.random()*120000;  // 2–4 min
+  return 180000+Math.random()*180000;                // clear: 3–6 min
+}
 function updateWeather(dt,el){
   if(autoWx && performance.now()>nextWxAt){
     weather=pickWeather();   // biased by the selected location's climate & current season
-    nextWxAt=performance.now()+ (16000+Math.random()*26000);
+    nextWxAt=performance.now()+weatherDwellMs(weather);
   }
   const targetWind=weather==="wind"?0.85:weather==="rain"?0.45:0.12;
   const targetRain=weather==="rain"?1:0;
   const targetCloud=weather==="rain"?0.8:weather==="wind"?0.35:0.12;
-  windCur+=(targetWind-windCur)*Math.min(1,dt*1.2);
-  rainAmt+=(targetRain-rainAmt)*Math.min(1,dt*0.8);
-  cloudDark+=(targetCloud-cloudDark)*Math.min(1,dt*0.8);
+  // Slow, eased transitions so weather builds and clears gradually. Clouds gather
+  // and the wind picks up ahead of the rain, and rain fades faster than it arrives.
+  windCur +=(targetWind -windCur )*Math.min(1,dt*0.22);
+  cloudDark+=(targetCloud-cloudDark)*Math.min(1,dt*0.18);
+  const rainRate=targetRain>rainAmt?0.10:0.16;   // ramps up slowly, eases off a bit quicker
+  rainAmt +=(targetRain -rainAmt )*Math.min(1,dt*rainRate);
 }
 
 /* ----- tree sway ----- */
@@ -1953,6 +1972,7 @@ function updateSeasonHUD(){
   const si=document.getElementById("seasonIcon");if(si)si.textContent=se.emoji;
   const sl=document.getElementById("seasonLbl");if(sl)sl.textContent=se.label;
   const ll=document.getElementById("locLbl");if(ll)ll.textContent=loc.name.split(",")[0];
+  updateMountainSnow();   // keep the peaks' snow in step with the current season
 }
 function applySettings(){
   state.settings=normalizeSettings(state.settings);
