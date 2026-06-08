@@ -1126,9 +1126,10 @@ function buildScenery(){
   updateMountainSnow();
 
   // ----- sea (opposite side, +Z) -----
-  const seaGeo=new THREE.PlaneGeometry(760,300,40,18);
-  const seaMat=new THREE.MeshStandardMaterial({color:0x2f7fae,roughness:.25,metalness:.25,fog:false,
-    transparent:true,opacity:.96,flatShading:true});
+  // A denser grid lets the layered waves read as real swell rather than a coarse ripple.
+  const seaGeo=new THREE.PlaneGeometry(760,320,96,40);
+  const seaMat=new THREE.MeshStandardMaterial({color:0x2f7fae,roughness:.18,metalness:.45,fog:false,
+    transparent:true,opacity:.97,flatShading:true});
   sea=new THREE.Mesh(seaGeo,seaMat);
   sea.rotation.x=-Math.PI/2;
   sea.position.set(0,0.08,240);   // begins just past the grass edge and stretches to the horizon
@@ -1138,15 +1139,25 @@ function buildScenery(){
 // gentle rolling-wave animation + day/night tint so the sea and peaks match the sky
 function updateScenery(el){
   if(sea){
-    const a=sea.userData.geo.attributes.position,base=sea.userData.base;
+    const a=sea.userData.geo.attributes.position,base=sea.userData.base,arr=a.array;
+    // Several overlapping wave trains at different headings, speeds and scales sum into an
+    // irregular, non-repeating swell. A long ground swell carries the surface, mid waves add
+    // shape, and a fast fine chop — which grows with the wind — gives the water its texture.
+    const chop=0.35+windCur*1.6;               // surface roughness rises with the wind
+    const amp=0.55+windCur*0.9;                // overall wave height rises with the wind
     for(let i=0;i<a.count;i++){
       const bx=base[i*3],by=base[i*3+1];
-      a.array[i*3+2]=Math.sin(bx*0.05+el*0.9)*0.6+Math.cos(by*0.06+el*0.7)*0.5;
+      let h =Math.sin(bx*0.018-by*0.012+el*0.45)*1.0;        // long ground swell
+      h+=Math.sin(bx*0.05 +el*0.8 )*0.5;                     // primary wave train
+      h+=Math.cos(by*0.06 +el*0.62)*0.42;                    // cross swell
+      h+=Math.sin((bx*0.09+by*0.07)+el*1.15)*0.26;           // diagonal mid wave
+      h+=Math.sin((bx*0.28+by*0.21)+el*2.3)*0.12*chop;       // fine, wind-driven chop
+      arr[i*3+2]=h*amp;
     }
     a.needsUpdate=true;
-    // sea darkens at night along with the daylight level
-    const b=Math.max(0.12,dayBright);
-    sea.material.color.setRGB(0.06+0.12*b,0.30+0.20*b,0.45+0.23*b);
+    // sea darkens at night with the daylight level; choppy water picks up a little whitecap sheen
+    const b=Math.max(0.12,dayBright),foam=windCur*0.10;
+    sea.material.color.setRGB(0.06+0.12*b+foam,0.30+0.20*b+foam,0.45+0.23*b+foam);
   }
   if(mountains){
     const b=Math.max(0.18,dayBright);
