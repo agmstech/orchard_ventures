@@ -465,34 +465,137 @@ const SPECIES = {
 };
 const DEFAULT_REQS=["Market research","Funding secured","System development","Team hired","Marketing launch"];
 
-/* ---------- Currencies & locations ---------- */
-const CURRENCIES={
-  PHP:{sym:"₱",locale:"en-PH",name:"Philippine peso"},
-  USD:{sym:"$",locale:"en-US",name:"US dollar"},
-  EUR:{sym:"€",locale:"de-DE",name:"Euro"},
-  GBP:{sym:"£",locale:"en-GB",name:"British pound"},
-  JPY:{sym:"¥",locale:"ja-JP",name:"Japanese yen",zero:true},
-  INR:{sym:"₹",locale:"en-IN",name:"Indian rupee"},
-  AUD:{sym:"A$",locale:"en-AU",name:"Australian dollar"},
-  CAD:{sym:"C$",locale:"en-CA",name:"Canadian dollar"},
-  SGD:{sym:"S$",locale:"en-SG",name:"Singapore dollar"},
-  MYR:{sym:"RM",locale:"ms-MY",name:"Malaysian ringgit"},
-  AED:{sym:"د.إ",locale:"ar-AE",name:"UAE dirham"},
-  BRL:{sym:"R$",locale:"pt-BR",name:"Brazilian real"},
-};
+/* ---------- Currencies & locations ----------
+   Every country is supported. Each row is [country, city, hemisphere, climate, currencyCode];
+   the hemisphere drives the season and the climate biases the weather mix. Currencies are derived
+   for any ISO 4217 code via Intl (symbol, decimals and display name), so the currency list always
+   covers exactly the currencies the supported countries use. The original ten cities keep their
+   slugs/cities so previously saved locations keep working.                                        */
+function _slug(s){return s.normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase().replace(/[^a-z0-9]/g,"");}
+const COUNTRY_ROWS=[
+  // — Africa —
+  ["Algeria","Algiers","N","arid","DZD"],["Angola","Luanda","S","tropical","AOA"],
+  ["Benin","Porto-Novo","N","tropical","XOF"],["Botswana","Gaborone","S","arid","BWP"],
+  ["Burkina Faso","Ouagadougou","N","arid","XOF"],["Burundi","Gitega","S","tropical","BIF"],
+  ["Cabo Verde","Praia","N","arid","CVE"],["Cameroon","Yaoundé","N","tropical","XAF"],
+  ["Central African Republic","Bangui","N","tropical","XAF"],["Chad","N'Djamena","N","arid","XAF"],
+  ["Comoros","Moroni","S","tropical","KMF"],["Congo","Brazzaville","S","tropical","XAF"],
+  ["DR Congo","Kinshasa","S","tropical","CDF"],["Côte d'Ivoire","Yamoussoukro","N","tropical","XOF"],
+  ["Djibouti","Djibouti","N","arid","DJF"],["Egypt","Cairo","N","arid","EGP"],
+  ["Equatorial Guinea","Malabo","N","tropical","XAF"],["Eritrea","Asmara","N","arid","ERN"],
+  ["Eswatini","Mbabane","S","temperate","SZL"],["Ethiopia","Addis Ababa","N","tropical","ETB"],
+  ["Gabon","Libreville","S","tropical","XAF"],["Gambia","Banjul","N","tropical","GMD"],
+  ["Ghana","Accra","N","tropical","GHS"],["Guinea","Conakry","N","tropical","GNF"],
+  ["Guinea-Bissau","Bissau","N","tropical","XOF"],["Kenya","Nairobi","S","tropical","KES"],
+  ["Lesotho","Maseru","S","temperate","LSL"],["Liberia","Monrovia","N","tropical","LRD"],
+  ["Libya","Tripoli","N","arid","LYD"],["Madagascar","Antananarivo","S","tropical","MGA"],
+  ["Malawi","Lilongwe","S","tropical","MWK"],["Mali","Bamako","N","arid","XOF"],
+  ["Mauritania","Nouakchott","N","arid","MRU"],["Mauritius","Port Louis","S","tropical","MUR"],
+  ["Morocco","Rabat","N","temperate","MAD"],["Mozambique","Maputo","S","tropical","MZN"],
+  ["Namibia","Windhoek","S","arid","NAD"],["Niger","Niamey","N","arid","XOF"],
+  ["Nigeria","Abuja","N","tropical","NGN"],["Rwanda","Kigali","S","tropical","RWF"],
+  ["São Tomé and Príncipe","São Tomé","N","tropical","STN"],["Senegal","Dakar","N","tropical","XOF"],
+  ["Seychelles","Victoria","S","tropical","SCR"],["Sierra Leone","Freetown","N","tropical","SLE"],
+  ["Somalia","Mogadishu","N","arid","SOS"],["South Africa","Pretoria","S","temperate","ZAR"],
+  ["South Sudan","Juba","N","tropical","SSP"],["Sudan","Khartoum","N","arid","SDG"],
+  ["Tanzania","Dodoma","S","tropical","TZS"],["Togo","Lomé","N","tropical","XOF"],
+  ["Tunisia","Tunis","N","temperate","TND"],["Uganda","Kampala","N","tropical","UGX"],
+  ["Zambia","Lusaka","S","tropical","ZMW"],["Zimbabwe","Harare","S","tropical","ZWL"],
+  // — Americas —
+  ["Antigua and Barbuda","St. John's","N","tropical","XCD"],["Argentina","Buenos Aires","S","temperate","ARS"],
+  ["Bahamas","Nassau","N","tropical","BSD"],["Barbados","Bridgetown","N","tropical","BBD"],
+  ["Belize","Belmopan","N","tropical","BZD"],["Bolivia","La Paz","S","tropical","BOB"],
+  ["Brazil","São Paulo","S","tropical","BRL"],["Canada","Ottawa","N","continental","CAD"],
+  ["Chile","Santiago","S","temperate","CLP"],["Colombia","Bogotá","N","tropical","COP"],
+  ["Costa Rica","San José","N","tropical","CRC"],["Cuba","Havana","N","tropical","CUP"],
+  ["Dominica","Roseau","N","tropical","XCD"],["Dominican Republic","Santo Domingo","N","tropical","DOP"],
+  ["Ecuador","Quito","S","tropical","USD"],["El Salvador","San Salvador","N","tropical","USD"],
+  ["Grenada","St. George's","N","tropical","XCD"],["Guatemala","Guatemala City","N","tropical","GTQ"],
+  ["Guyana","Georgetown","N","tropical","GYD"],["Haiti","Port-au-Prince","N","tropical","HTG"],
+  ["Honduras","Tegucigalpa","N","tropical","HNL"],["Jamaica","Kingston","N","tropical","JMD"],
+  ["Mexico","Mexico City","N","temperate","MXN"],["Nicaragua","Managua","N","tropical","NIO"],
+  ["Panama","Panama City","N","tropical","PAB"],["Paraguay","Asunción","S","tropical","PYG"],
+  ["Peru","Lima","S","arid","PEN"],["Saint Kitts and Nevis","Basseterre","N","tropical","XCD"],
+  ["Saint Lucia","Castries","N","tropical","XCD"],["Saint Vincent and the Grenadines","Kingstown","N","tropical","XCD"],
+  ["Suriname","Paramaribo","N","tropical","SRD"],["Trinidad and Tobago","Port of Spain","N","tropical","TTD"],
+  ["United States","New York","N","continental","USD"],["Uruguay","Montevideo","S","temperate","UYU"],
+  ["Venezuela","Caracas","N","tropical","VES"],
+  // — Asia —
+  ["Afghanistan","Kabul","N","continental","AFN"],["Armenia","Yerevan","N","continental","AMD"],
+  ["Azerbaijan","Baku","N","temperate","AZN"],["Bahrain","Manama","N","arid","BHD"],
+  ["Bangladesh","Dhaka","N","tropical","BDT"],["Bhutan","Thimphu","N","continental","BTN"],
+  ["Brunei","Bandar Seri Begawan","N","tropical","BND"],["Cambodia","Phnom Penh","N","tropical","KHR"],
+  ["China","Beijing","N","continental","CNY"],["Cyprus","Nicosia","N","temperate","EUR"],
+  ["Georgia","Tbilisi","N","temperate","GEL"],["India","Mumbai","N","tropical","INR"],
+  ["Indonesia","Jakarta","S","tropical","IDR"],["Iran","Tehran","N","arid","IRR"],
+  ["Iraq","Baghdad","N","arid","IQD"],["Israel","Jerusalem","N","temperate","ILS"],
+  ["Japan","Tokyo","N","temperate","JPY"],["Jordan","Amman","N","arid","JOD"],
+  ["Kazakhstan","Astana","N","continental","KZT"],["Kuwait","Kuwait City","N","arid","KWD"],
+  ["Kyrgyzstan","Bishkek","N","continental","KGS"],["Laos","Vientiane","N","tropical","LAK"],
+  ["Lebanon","Beirut","N","temperate","LBP"],["Malaysia","Kuala Lumpur","N","tropical","MYR"],
+  ["Maldives","Malé","N","tropical","MVR"],["Mongolia","Ulaanbaatar","N","continental","MNT"],
+  ["Myanmar","Naypyidaw","N","tropical","MMK"],["Nepal","Kathmandu","N","continental","NPR"],
+  ["North Korea","Pyongyang","N","continental","KPW"],["Oman","Muscat","N","arid","OMR"],
+  ["Pakistan","Islamabad","N","arid","PKR"],["Palestine","Ramallah","N","temperate","ILS"],
+  ["Philippines","Manila","N","tropical","PHP"],["Qatar","Doha","N","arid","QAR"],
+  ["Saudi Arabia","Riyadh","N","arid","SAR"],["Singapore","Singapore","N","tropical","SGD"],
+  ["South Korea","Seoul","N","continental","KRW"],["Sri Lanka","Colombo","N","tropical","LKR"],
+  ["Syria","Damascus","N","arid","SYP"],["Taiwan","Taipei","N","tropical","TWD"],
+  ["Tajikistan","Dushanbe","N","continental","TJS"],["Thailand","Bangkok","N","tropical","THB"],
+  ["Timor-Leste","Dili","S","tropical","USD"],["Turkey","Ankara","N","temperate","TRY"],
+  ["Turkmenistan","Ashgabat","N","arid","TMT"],["United Arab Emirates","Dubai","N","arid","AED"],
+  ["Uzbekistan","Tashkent","N","continental","UZS"],["Vietnam","Hanoi","N","tropical","VND"],
+  ["Yemen","Sana'a","N","arid","YER"],
+  // — Europe —
+  ["Albania","Tirana","N","temperate","ALL"],["Andorra","Andorra la Vella","N","temperate","EUR"],
+  ["Austria","Vienna","N","continental","EUR"],["Belarus","Minsk","N","continental","BYN"],
+  ["Belgium","Brussels","N","temperate","EUR"],["Bosnia and Herzegovina","Sarajevo","N","continental","BAM"],
+  ["Bulgaria","Sofia","N","continental","BGN"],["Croatia","Zagreb","N","temperate","EUR"],
+  ["Czechia","Prague","N","continental","CZK"],["Denmark","Copenhagen","N","temperate","DKK"],
+  ["Estonia","Tallinn","N","continental","EUR"],["Finland","Helsinki","N","continental","EUR"],
+  ["France","Paris","N","temperate","EUR"],["Germany","Berlin","N","temperate","EUR"],
+  ["Greece","Athens","N","temperate","EUR"],["Hungary","Budapest","N","continental","HUF"],
+  ["Iceland","Reykjavik","N","temperate","ISK"],["Ireland","Dublin","N","temperate","EUR"],
+  ["Italy","Rome","N","temperate","EUR"],["Kosovo","Pristina","N","continental","EUR"],
+  ["Latvia","Riga","N","continental","EUR"],["Liechtenstein","Vaduz","N","temperate","CHF"],
+  ["Lithuania","Vilnius","N","continental","EUR"],["Luxembourg","Luxembourg","N","temperate","EUR"],
+  ["Malta","Valletta","N","temperate","EUR"],["Moldova","Chișinău","N","continental","MDL"],
+  ["Monaco","Monaco","N","temperate","EUR"],["Montenegro","Podgorica","N","temperate","EUR"],
+  ["Netherlands","Amsterdam","N","temperate","EUR"],["North Macedonia","Skopje","N","continental","MKD"],
+  ["Norway","Oslo","N","continental","NOK"],["Poland","Warsaw","N","continental","PLN"],
+  ["Portugal","Lisbon","N","temperate","EUR"],["Romania","Bucharest","N","continental","RON"],
+  ["Russia","Moscow","N","continental","RUB"],["San Marino","San Marino","N","temperate","EUR"],
+  ["Serbia","Belgrade","N","continental","RSD"],["Slovakia","Bratislava","N","continental","EUR"],
+  ["Slovenia","Ljubljana","N","temperate","EUR"],["Spain","Madrid","N","temperate","EUR"],
+  ["Sweden","Stockholm","N","continental","SEK"],["Switzerland","Bern","N","temperate","CHF"],
+  ["Ukraine","Kyiv","N","continental","UAH"],["United Kingdom","London","N","temperate","GBP"],
+  ["Vatican City","Vatican City","N","temperate","EUR"],
+  // — Oceania —
+  ["Australia","Sydney","S","temperate","AUD"],["Fiji","Suva","S","tropical","FJD"],
+  ["Kiribati","Tarawa","N","tropical","AUD"],["Marshall Islands","Majuro","N","tropical","USD"],
+  ["Micronesia","Palikir","N","tropical","USD"],["Nauru","Yaren","S","tropical","AUD"],
+  ["New Zealand","Wellington","S","temperate","NZD"],["Palau","Ngerulmud","N","tropical","USD"],
+  ["Papua New Guinea","Port Moresby","S","tropical","PGK"],["Samoa","Apia","S","tropical","WST"],
+  ["Solomon Islands","Honiara","S","tropical","SBD"],["Tonga","Nuku'alofa","S","tropical","TOP"],
+  ["Tuvalu","Funafuti","S","tropical","AUD"],["Vanuatu","Port Vila","S","tropical","VUV"],
+];
 // hemisphere drives season; climate biases the weather mix
-const LOCATIONS={
-  manila:{name:"Manila, Philippines",hemisphere:"N",climate:"tropical",currency:"PHP"},
-  singapore:{name:"Singapore",hemisphere:"N",climate:"tropical",currency:"SGD"},
-  mumbai:{name:"Mumbai, India",hemisphere:"N",climate:"tropical",currency:"INR"},
-  dubai:{name:"Dubai, UAE",hemisphere:"N",climate:"arid",currency:"AED"},
-  london:{name:"London, UK",hemisphere:"N",climate:"temperate",currency:"GBP"},
-  newyork:{name:"New York, USA",hemisphere:"N",climate:"continental",currency:"USD"},
-  tokyo:{name:"Tokyo, Japan",hemisphere:"N",climate:"temperate",currency:"JPY"},
-  paris:{name:"Paris, France",hemisphere:"N",climate:"temperate",currency:"EUR"},
-  saopaulo:{name:"São Paulo, Brazil",hemisphere:"S",climate:"tropical",currency:"BRL"},
-  sydney:{name:"Sydney, Australia",hemisphere:"S",climate:"temperate",currency:"AUD"},
-};
+const LOCATIONS={};
+COUNTRY_ROWS.forEach(([country,city,hemisphere,climate,currency])=>{
+  LOCATIONS[_slug(city)]={name:city===country?country:city+", "+country,country,hemisphere,climate,currency};
+});
+// Currencies derived for every code the countries use. Symbols/decimals/names come from Intl,
+// with a few overrides so the original currencies keep their familiar symbols.
+const CUR_LOCALES={PHP:"en-PH",USD:"en-US",EUR:"de-DE",GBP:"en-GB",JPY:"ja-JP",INR:"en-IN",AUD:"en-AU",CAD:"en-CA",SGD:"en-SG",MYR:"ms-MY",AED:"ar-AE",BRL:"pt-BR"};
+const CUR_SYMS={AUD:"A$",CAD:"C$",SGD:"S$",MYR:"RM",AED:"د.إ",BRL:"R$"};
+let _curNames=null;try{_curNames=new Intl.DisplayNames(["en"],{type:"currency"});}catch(e){}
+function _curSym(code){try{const p=new Intl.NumberFormat("en",{style:"currency",currency:code,currencyDisplay:"narrowSymbol"}).formatToParts(1);const c=p.find(x=>x.type==="currency");return c?c.value:code;}catch(e){return code;}}
+function _curZero(code){try{return new Intl.NumberFormat("en",{style:"currency",currency:code}).resolvedOptions().maximumFractionDigits===0;}catch(e){return false;}}
+function _curName(code){try{return(_curNames&&_curNames.of(code))||code;}catch(e){return code;}}
+const CURRENCIES={};
+[...new Set(COUNTRY_ROWS.map(r=>r[4]))].sort().forEach(code=>{
+  CURRENCIES[code]={sym:CUR_SYMS[code]||_curSym(code),locale:CUR_LOCALES[code]||"en",name:_curName(code),zero:_curZero(code)};
+});
 let CUR="₱",CUR_LOCALE="en-PH",CUR_ZERO=false;
 function applyCurrency(){const c=CURRENCIES[settingsGet("currency")]||CURRENCIES.PHP;CUR=c.sym;CUR_LOCALE=c.locale;CUR_ZERO=!!c.zero;}
 function curLoc(){return LOCATIONS[settingsGet("location")]||LOCATIONS.manila;}
@@ -1710,7 +1813,7 @@ function teamDelTask(id,tid){const m=teamMember(id);if(!m)return;m.tasks=m.tasks
 function openSettings(){
   const s=normalizeSettings(state.settings);const se=currentSeason();const loc=LOCATIONS[s.location];
   const curOpts=Object.entries(CURRENCIES).map(([k,c])=>`<option value="${k}" ${k===s.currency?'selected':''}>${c.sym}  ${k} · ${c.name}</option>`).join("");
-  const locOpts=Object.entries(LOCATIONS).map(([k,l])=>`<option value="${k}" ${k===s.location?'selected':''}>${l.name}</option>`).join("");
+  const locOpts=Object.entries(LOCATIONS).sort((a,b)=>(a[1].country||a[1].name).localeCompare(b[1].country||b[1].name)).map(([k,l])=>`<option value="${k}" ${k===s.location?'selected':''}>${l.name}</option>`).join("");
   const seasonKeys=seasonOptionsFor(loc.climate);
   const curSeason=(s.season&&s.season!=="auto"&&seasonKeys.includes(s.season))?s.season:"auto";
   const seasonOpts=`<option value="auto" ${curSeason==="auto"?'selected':''}>🗓️ Auto — follow real-world date</option>`+
