@@ -290,6 +290,35 @@ header.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom
 .setcard-row+.setcard-row{border-top:1px solid var(--line)}
 .setcard-row span{color:var(--ink-soft)}
 .setcard-row b{color:var(--ink);text-align:right}
+/* team / org tree */
+.tm-empty{color:var(--ink-soft);font-style:italic;font-size:13px;padding:10px 0}
+.tm-tree{display:flex;flex-direction:column;gap:8px}
+.tm-card{border:1.5px solid var(--line);background:var(--paper-2);border-radius:12px;padding:10px 12px;position:relative}
+.tm-node{position:relative}
+.tm-node .tm-node::before{content:"";position:absolute;left:-10px;top:-4px;bottom:0;border-left:1.5px dashed var(--line)}
+.tm-top{display:flex;gap:8px;align-items:center;margin-bottom:7px}
+.tm-name{flex:1.3;font-weight:700;font-size:13.5px;color:var(--ink);background:var(--paper);border:1.5px solid var(--line);border-radius:8px;padding:6px 9px;font-family:"Fraunces",serif}
+.tm-role{flex:1;font-size:12.5px;color:var(--ink-soft);background:var(--paper);border:1.5px solid var(--line);border-radius:8px;padding:6px 9px;font-family:"Spline Sans",sans-serif}
+.tm-name:focus,.tm-role:focus{outline:none;border-color:var(--leaf)}
+.tm-del{flex:none;border:none;background:transparent;cursor:pointer;font-size:15px;opacity:.55}
+.tm-del:hover{opacity:1}
+.tm-meta{display:flex;justify-content:space-between;align-items:center;font-size:11.5px;color:var(--ink-soft);margin-bottom:6px;gap:10px}
+.tm-meta select{font-family:"Spline Sans",sans-serif;font-size:11.5px;color:var(--ink);background:var(--paper);border:1.5px solid var(--line);border-radius:7px;padding:3px 6px;cursor:pointer}
+.tm-taskcount{flex:none;font-weight:600}
+.tm-tasks{list-style:none;margin:0 0 7px;padding:0;display:flex;flex-direction:column;gap:4px}
+.tm-task{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink)}
+.tm-task.done span{text-decoration:line-through;color:var(--ink-soft)}
+.tm-task span{flex:1}
+.tm-ck{flex:none;width:18px;height:18px;border-radius:5px;border:1.5px solid var(--line);background:var(--paper);cursor:pointer;font-size:11px;color:var(--leaf-deep);line-height:1}
+.tm-task.done .tm-ck{background:var(--leaf);border-color:var(--leaf);color:#fff}
+.tm-x{flex:none;border:none;background:transparent;color:var(--ink-soft);cursor:pointer;font-size:15px;line-height:1}
+.tm-x:hover{color:var(--bad)}
+.tm-addtask{display:flex;gap:6px;align-items:center}
+.tm-addtask input{flex:1;font-size:12px;background:var(--paper);border:1.5px solid var(--line);border-radius:8px;padding:5px 8px;font-family:"Spline Sans",sans-serif}
+.tm-addtask input:focus{outline:none;border-color:var(--leaf)}
+.tm-addtask>button{flex:none;border:1.5px solid var(--line);background:var(--paper);border-radius:8px;padding:5px 10px;cursor:pointer;font-weight:700;color:var(--ink-soft)}
+.tm-addtask .tm-addchild{font-size:11.5px;font-weight:600;color:var(--leaf-deep);border-color:var(--leaf)}
+.tm-addtask>button:hover{border-color:var(--clay);color:var(--ink)}
 .species-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:10px}
 .species{border:1.5px solid var(--line);background:var(--paper-2);border-radius:14px;padding:12px 8px;text-align:center;transition:.15s}
 .species:hover{border-color:var(--clay);transform:translateY(-2px);background:#fff}
@@ -317,6 +346,7 @@ header.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom
     </div>
     <div class="toolbtns">
       <button class="btn" id="btnHelp">❔ How it works</button>
+      <button class="btn ghost" id="btnTeam">👥 Team</button>
       <button class="btn ghost" id="btnSettings">🌍 Settings</button>
       <button class="btn ghost" id="btnExport">⬇️ Backup</button>
       <button class="btn ghost" id="btnImport">⬆️ Restore</button>
@@ -540,15 +570,19 @@ function buildState(){
   orchards.forEach(o=>o.plots.forEach(p=>{if(p.tree)migrateTree(p.tree);}));
   const obj={orchards,
     currentOrchardId:(raw.currentOrchardId&&orchards.some(o=>o.id===raw.currentOrchardId))?raw.currentOrchardId:orchards[0].id,
-    sortBy:raw.sortBy||"profit",settings:normalizeSettings(raw.settings)};
+    sortBy:raw.sortBy||"profit",settings:normalizeSettings(raw.settings),team:normalizeTeam(raw.team)};
   Object.defineProperty(obj,"plots",{get(){return curOrchardOf(obj).plots;},set(v){curOrchardOf(obj).plots=v;}});
   Object.defineProperty(obj,"selectedPlotId",{get(){return curOrchardOf(obj).selectedPlotId;},set(v){curOrchardOf(obj).selectedPlotId=v;}});
   return obj;
 }
 let state=buildState();
 function normalizeSettings(s){s=s||{};return{currency:CURRENCIES[s.currency]?s.currency:"PHP",location:LOCATIONS[s.location]?s.location:"manila"};}
+function normalizeTeam(t){if(!Array.isArray(t))return[];const ids=new Set(t.map(m=>m&&m.id).filter(Boolean));
+  return t.filter(m=>m&&m.id).map(m=>({id:m.id,name:typeof m.name==="string"?m.name:"New cultivator",role:typeof m.role==="string"?m.role:"Cultivator",
+    parentId:(m.parentId&&ids.has(m.parentId)&&m.parentId!==m.id)?m.parentId:null,
+    tasks:Array.isArray(m.tasks)?m.tasks.filter(k=>k&&typeof k.text==="string").map(k=>({id:k.id||uid(),text:k.text,done:!!k.done})):[]}));}
 function settingsGet(k){return (state&&state.settings?state.settings:normalizeSettings(null))[k];}
-function save(){Store.write({orchards:state.orchards,currentOrchardId:state.currentOrchardId,sortBy:state.sortBy,settings:state.settings});}
+function save(){Store.write({orchards:state.orchards,currentOrchardId:state.currentOrchardId,sortBy:state.sortBy,settings:state.settings,team:state.team});}
 
 /* ---------- Derived ---------- */
 function newTree(speciesKey){const sp=SPECIES[speciesKey];return{species:speciesKey,venture:sp.name+" Venture",
@@ -1503,8 +1537,20 @@ const modalRoot=document.getElementById("modalRoot");
 function closeModal(){modalRoot.innerHTML="";}
 modalRoot.addEventListener("click",e=>{if(e.target===modalRoot.firstElementChild)closeModal();if(e.target.closest("[data-close]"))closeModal();
   const pick=e.target.closest("[data-pick]");if(pick){closeModal();plant(pick.dataset.pick);}
-  if(e.target.id==="confirmYes"&&modalRoot._yes)modalRoot._yes();});
-modalRoot.addEventListener("change",e=>{const st=e.target.dataset.setting;if(st)setSetting(st,e.target.value);});
+  if(e.target.id==="confirmYes"&&modalRoot._yes)modalRoot._yes();
+  // team actions
+  let b;
+  if((b=e.target.closest("[data-team-add]"))){teamAdd(null);return;}
+  if((b=e.target.closest("[data-team-addchild]"))){teamAdd(b.dataset.teamAddchild);return;}
+  if((b=e.target.closest("[data-team-del]"))){teamDel(b.dataset.teamDel);return;}
+  if((b=e.target.closest("[data-team-task-toggle]"))){teamToggleTask(b.dataset.teamTaskToggle,b.dataset.task);return;}
+  if((b=e.target.closest("[data-team-task-del]"))){teamDelTask(b.dataset.teamTaskDel,b.dataset.task);return;}
+  if((b=e.target.closest("[data-team-task-add]"))){const id=b.dataset.teamTaskAdd;const inp=modalRoot.querySelector(`[data-team-taskinput="${id}"]`);teamAddTask(id,inp?inp.value:"");return;}});
+modalRoot.addEventListener("change",e=>{const st=e.target.dataset.setting;if(st){setSetting(st,e.target.value);return;}
+  const tp=e.target.dataset.teamParent;if(tp){teamSetParent(tp,e.target.value);return;}
+  const tn=e.target.dataset.teamName;if(tn){teamSetName(tn,e.target.value);return;}
+  const tr=e.target.dataset.teamRole;if(tr){teamSetRole(tr,e.target.value);return;}});
+modalRoot.addEventListener("keydown",e=>{const id=e.target.dataset.teamTaskinput;if(id&&e.key==="Enter"){e.preventDefault();teamAddTask(id,e.target.value);}});
 function openSpeciesPicker(){
   const cards=Object.entries(SPECIES).map(([k,s])=>`<button class="species" data-pick="${k}"><div class="e">${s.emoji}</div><div class="n">${s.name}</div></button>`).join("");
   modalRoot.innerHTML=`<div class="overlay"><div class="modal"><div class="mhead"><h2>🌱 Plant a venture</h2><button class="iconbtn" data-close>✕</button></div>
@@ -1529,6 +1575,67 @@ function setSetting(k,v){
   if(k==="location"){const loc=LOCATIONS[v];if(loc&&loc.currency&&CURRENCIES[loc.currency])state.settings.currency=loc.currency;}
   applySettings();openSettings();
 }
+/* ---------- Team / cultivators (organization tree) ---------- */
+function teamChildren(pid){return state.team.filter(m=>m.parentId===pid);}
+function teamMember(id){return state.team.find(m=>m.id===id);}
+// Guards against creating a cycle when re-parenting (a member can't report to its own descendant).
+function isDescendant(id,maybeAncestor){let m=teamMember(id);const seen=new Set();
+  while(m&&m.parentId&&!seen.has(m.parentId)){if(m.parentId===maybeAncestor)return true;seen.add(m.parentId);m=teamMember(m.parentId);}return false;}
+function teamNodeHTML(m,depth){
+  const kids=teamChildren(m.id);
+  const others=state.team.filter(o=>o.id!==m.id&&!isDescendant(o.id,m.id));
+  const parentOpts=`<option value="" ${m.parentId?'':'selected'}>— top level —</option>`+others.map(o=>`<option value="${o.id}" ${m.parentId===o.id?'selected':''}>${esc(o.name)} · ${esc(o.role)}</option>`).join("");
+  const tasks=m.tasks.map(k=>`<li class="tm-task ${k.done?'done':''}">
+      <button class="tm-ck" data-team-task-toggle="${m.id}" data-task="${k.id}">${k.done?'✓':''}</button>
+      <span>${esc(k.text)}</span>
+      <button class="tm-x" data-team-task-del="${m.id}" data-task="${k.id}" title="Remove task">×</button></li>`).join("");
+  const doneN=m.tasks.filter(k=>k.done).length;
+  return `<div class="tm-node" style="margin-left:${depth*18}px">
+    <div class="tm-card">
+      <div class="tm-top">
+        <input class="tm-name" data-team-name="${m.id}" value="${esc(m.name)}" placeholder="Name" maxlength="40" />
+        <input class="tm-role" data-team-role="${m.id}" value="${esc(m.role)}" placeholder="Role" maxlength="40" />
+        <button class="tm-del" data-team-del="${m.id}" title="Remove cultivator">🗑️</button>
+      </div>
+      <div class="tm-meta">
+        <label>Reports to <select data-team-parent="${m.id}">${parentOpts}</select></label>
+        <span class="tm-taskcount">${doneN}/${m.tasks.length} tasks</span>
+      </div>
+      <ul class="tm-tasks">${tasks}</ul>
+      <div class="tm-addtask"><input data-team-taskinput="${m.id}" placeholder="Add a task…" maxlength="80" />
+        <button data-team-task-add="${m.id}">＋</button>
+        <button class="tm-addchild" data-team-addchild="${m.id}" title="Add someone who reports to ${esc(m.name)}">＋ report</button></div>
+    </div>
+    ${kids.map(c=>teamNodeHTML(c,depth+1)).join("")}
+  </div>`;
+}
+function renderTeamModal(){
+  const roots=teamChildren(null);
+  const tree=roots.length?roots.map(r=>teamNodeHTML(r,0)).join(""):`<div class="tm-empty">No cultivators yet. Add the farm owner or manager to start your organization tree. 🌱</div>`;
+  const totalTasks=state.team.reduce((a,m)=>a+m.tasks.length,0);const doneTasks=state.team.reduce((a,m)=>a+m.tasks.filter(k=>k.done).length,0);
+  modalRoot.innerHTML=`<div class="overlay"><div class="modal" style="max-width:620px"><div class="mhead"><h2>👥 Cultivators &amp; roles</h2><button class="iconbtn" data-close>✕</button></div>
+  <div class="mbody">
+    <p style="margin:0 0 12px;color:var(--ink-soft);font-size:13px">Build your farm's organization tree — add farmers and cultivators, set each one's role and who they report to, and track their tasks. ${state.team.length?`<b>${state.team.length}</b> people · <b>${doneTasks}/${totalTasks}</b> tasks done.`:''}</p>
+    <div class="tm-tree">${tree}</div>
+    <button class="btn primary" data-team-add style="margin-top:14px">＋ Add cultivator</button>
+  </div></div></div>`;
+}
+function openTeam(){renderTeamModal();}
+function teamAdd(parentId){state.team.push({id:uid(),name:"New cultivator",role:parentId?"Cultivator":"Farm owner",parentId:parentId||null,tasks:[]});save();renderTeamModal();}
+function teamDel(id){const m=teamMember(id);if(!m)return;
+  // re-parent any direct reports up to the removed member's parent, then delete
+  teamChildren(id).forEach(c=>c.parentId=m.parentId);
+  state.team=state.team.filter(x=>x.id!==id);save();renderTeamModal();}
+function teamSetName(id,v){const m=teamMember(id);if(m){m.name=v;save();}}
+function teamSetRole(id,v){const m=teamMember(id);if(m){m.role=v;save();}}
+function teamSetParent(id,v){const m=teamMember(id);if(!m)return;const pid=v||null;
+  if(pid&&(pid===id||isDescendant(pid,id))){renderTeamModal();return;}   // ignore cycles
+  m.parentId=pid;save();renderTeamModal();}
+function teamAddTask(id,text){text=(text||"").trim();if(!text)return;const m=teamMember(id);if(!m)return;
+  m.tasks.push({id:uid(),text,done:false});save();renderTeamModal();}
+function teamToggleTask(id,tid){const m=teamMember(id);if(!m)return;const k=m.tasks.find(x=>x.id===tid);if(k){k.done=!k.done;save();renderTeamModal();}}
+function teamDelTask(id,tid){const m=teamMember(id);if(!m)return;m.tasks=m.tasks.filter(x=>x.id!==tid);save();renderTeamModal();}
+
 function openSettings(){
   const s=normalizeSettings(state.settings);const se=currentSeason();const loc=LOCATIONS[s.location];
   const curOpts=Object.entries(CURRENCIES).map(([k,c])=>`<option value="${k}" ${k===s.currency?'selected':''}>${c.sym}  ${k} · ${c.name}</option>`).join("");
@@ -1569,7 +1676,7 @@ function showConfirm(title,msg,onYes){modalRoot._yes=onYes;
   <div style="display:flex;gap:10px;justify-content:flex-end"><button class="btn ghost" data-close>Cancel</button><button class="btn primary" id="confirmYes">Yes, continue</button></div></div></div></div>`;
 }
 let toastTimer;function toast(m){const el=document.getElementById("toast");el.textContent=m;el.classList.add("show");clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove("show"),2200);}
-function exportData(){const blob=new Blob([JSON.stringify({orchards:state.orchards,currentOrchardId:state.currentOrchardId,sortBy:state.sortBy,settings:state.settings},null,2)],{type:"application/json"});
+function exportData(){const blob=new Blob([JSON.stringify({orchards:state.orchards,currentOrchardId:state.currentOrchardId,sortBy:state.sortBy,settings:state.settings,team:state.team},null,2)],{type:"application/json"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="orchard-ventures-backup.json";a.click();URL.revokeObjectURL(a.href);toast("⬇️ Backup downloaded");}
 function importData(file){const fr=new FileReader();fr.onload=()=>{try{const d=JSON.parse(fr.result);
   let orchards;
@@ -1577,7 +1684,7 @@ function importData(file){const fr=new FileReader();fr.onload=()=>{try{const d=J
   else if(Array.isArray(d.plots)){orchards=[{id:uid(),name:"My Orchard",plots:d.plots,selectedPlotId:null}];}
   else throw 0;
   orchards.forEach(o=>o.plots.forEach(p=>{if(p.tree)migrateTree(p.tree);}));
-  state.orchards=orchards;state.currentOrchardId=orchards[0].id;state.sortBy=d.sortBy||"profit";state.settings=normalizeSettings(d.settings);applyCurrency();updateSeasonHUD();save();
+  state.orchards=orchards;state.currentOrchardId=orchards[0].id;state.sortBy=d.sortBy||"profit";state.settings=normalizeSettings(d.settings);state.team=normalizeTeam(d.team);applyCurrency();updateSeasonHUD();save();
   buildOrchard();fitCamera();updateSelectionRings();renderOrchardBar();renderStats();renderBoard();renderPanel();syncSort();toast("⬆️ Orchard restored");}
   catch(e){toast("⚠️ Could not read that file");}};fr.readAsText(file);}
 function resetAll(){showConfirm("Clear this orchard?","Every plot, venture and record in the current orchard will be deleted. Consider a Backup first.",()=>{
@@ -1611,6 +1718,7 @@ panel.addEventListener("keydown",e=>{if(e.target.id==="newReq"&&e.key==="Enter")
 // toolbar
 document.getElementById("btnHelp").onclick=openHelp;
 document.getElementById("btnSettings").onclick=openSettings;
+document.getElementById("btnTeam").onclick=openTeam;
 document.getElementById("btnReset").onclick=resetAll;
 document.getElementById("btnExport").onclick=exportData;
 document.getElementById("btnImport").onclick=()=>document.getElementById("fileImport").click();
