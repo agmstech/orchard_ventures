@@ -771,9 +771,12 @@ function updateLabels(){
     if(!anchor||!showLabels){el.style.display="none";continue;}
     anchor.getWorldPosition(_v);_v.project(camera);
     if(_v.z>1){el.style.display="none";continue;}
+    const depth=_v.z;            // NDC depth: smaller = nearer the camera
     const sx=(_v.x*0.5+0.5)*W, sy=(-_v.y*0.5+0.5)*H;
     if(sx<-60||sx>W+60||sy<-40||sy>H+40){el.style.display="none";continue;}
     el.style.display="block";el.style.left=sx+"px";el.style.top=sy+"px";
+    // stack so nearer labels sit on top regardless of orchard rotation
+    el.style.zIndex=Math.round((1-depth)*100000);
     // fade with distance
     const d=camera.position.distanceTo(_v.setFromMatrixPosition(anchor.matrixWorld));
     el.style.opacity=Math.max(0.25,Math.min(1,1.4-(camRadius-22)/60));
