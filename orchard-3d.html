@@ -22,10 +22,10 @@ body{font-family:"Spline Sans",system-ui,sans-serif;color:var(--ink);
 .mono{font-family:"Spline Sans Mono",monospace}
 button{font-family:inherit;cursor:pointer}
 input{font-family:inherit}
-.wrap{max-width:1340px;margin:0 auto;padding:16px 18px 60px}
+.wrap{max-width:1340px;margin:0 auto;padding:10px 18px 60px}
 
 /* header */
-header.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:12px}
+header.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:8px}
 .brand{display:flex;align-items:center;gap:12px;margin-right:auto}
 .brand .seal{width:50px;height:50px;border-radius:15px;flex:none;display:grid;place-items:center;font-size:26px;
   background:radial-gradient(circle at 35% 30%,#ffe7b0,#e8a93a 70%,#c98712);box-shadow:inset 0 0 0 2px #fff6,0 6px 14px rgba(201,135,18,.35)}
@@ -43,10 +43,10 @@ header.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom
 .btn:disabled{opacity:.4;cursor:default;pointer-events:none}
 
 /* stats */
-.stats{display:flex;gap:10px;flex-wrap:wrap;margin:4px 0 14px}
-.chip{background:var(--paper);border:1.5px solid var(--line);border-radius:14px;padding:9px 14px;min-width:118px;flex:1 1 128px;position:relative;overflow:hidden}
-.chip .lbl{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-soft);font-weight:600}
-.chip .val{font-family:"Fraunces",serif;font-weight:700;font-size:21px;margin-top:2px;letter-spacing:-.5px}
+.stats{display:flex;gap:9px;flex-wrap:wrap;margin:2px 0 8px}
+.chip{background:var(--paper);border:1.5px solid var(--line);border-radius:13px;padding:6px 13px;min-width:118px;flex:1 1 128px;position:relative;overflow:hidden}
+.chip .lbl{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-soft);font-weight:600}
+.chip .val{font-family:"Fraunces",serif;font-weight:700;font-size:19px;margin-top:1px;letter-spacing:-.5px}
 .chip .val.pos{color:var(--ok)}.chip .val.neg{color:var(--bad)}
 .chip::after{content:"";position:absolute;right:-8px;bottom:-10px;font-size:46px;opacity:.07}
 .chip.v::after{content:"🌳"}.chip.inv::after{content:"💰"}.chip.sal::after{content:"🪙"}.chip.profit::after{content:"📈"}.chip.fr::after{content:"🍃"}
@@ -57,7 +57,9 @@ header.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom
 
 /* 3d card */
 .stage-card{border-radius:22px;overflow:hidden;border:2px solid #e8d6ad;box-shadow:0 18px 44px -24px rgba(58,42,29,.55);position:relative}
-#canvasWrap{position:relative;width:100%;height:600px;background:#0c1224;touch-action:none;overflow:hidden}
+/* Height tracks the viewport so the full orchard fits above the fold on most screens
+   (subtracting the header/stats/orchard-bar chrome), capped so it never gets huge. */
+#canvasWrap{position:relative;width:100%;height:clamp(420px,calc(100vh - 196px),600px);background:#0c1224;touch-action:none;overflow:hidden}
 @media(max-width:560px){#canvasWrap{height:460px}}
 #c{display:block;width:100%;height:100%}
 #labels{position:absolute;inset:0;pointer-events:none;overflow:hidden}
@@ -181,7 +183,7 @@ header.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom
 .care-state.bad{color:var(--bad)}
 .section.care.disabled .care-health,.section.care.disabled .care-state.off{opacity:.7}
 /* orchard bar */
-.orchard-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0 0 12px}
+.orchard-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0 0 8px}
 .orchard-tabs{display:flex;gap:7px;flex-wrap:wrap}
 .orchard-tab{border:1.5px solid var(--line);background:var(--paper-2);border-radius:11px;padding:7px 13px;font-weight:600;font-size:13px;color:var(--ink-soft);cursor:pointer;font-family:"Spline Sans",sans-serif;display:inline-flex;align-items:center;gap:7px}
 .orchard-tab:hover{border-color:var(--clay)}
