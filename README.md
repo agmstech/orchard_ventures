@@ -1,5 +1,7 @@
 # 🌳 Orchard Ventures
 
+![version](https://img.shields.io/badge/version-1.5-e8a93a)
+
 **Business ventures, gamified.** Turn your business ideas into a 3D orchard — every venture is a fruit tree you grow from seed to harvest.
 
 Plant a seed for each idea, tick off the milestones it needs to grow, then harvest the fruit as sales roll in. Track money and time in an investment journal, and watch your most profitable venture earn a golden crown.
