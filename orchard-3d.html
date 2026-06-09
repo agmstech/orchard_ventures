@@ -1163,7 +1163,9 @@ function buildScenery(){
       mountains.add(cap);caps.push(cap);
     }
   });
-  scene.add(mountains);
+  // Parent the scenery to `world` (not the scene) so it rotates/tilts together with the
+  // orchard when the View controls change orientation, instead of drifting out of alignment.
+  world.add(mountains);
   updateMountainSnow();
 
   // ----- sea (opposite side, +Z) -----
@@ -1175,7 +1177,7 @@ function buildScenery(){
   sea.rotation.x=-Math.PI/2;
   sea.position.set(0,0.08,240);   // begins just past the grass edge and stretches to the horizon
   sea.userData={geo:seaGeo,base:Float32Array.from(seaGeo.attributes.position.array)};
-  scene.add(sea);
+  world.add(sea);
 }
 // gentle rolling-wave animation + day/night tint so the sea and peaks match the sky
 function updateScenery(el){
