@@ -996,7 +996,9 @@ function initThree(){
   scene.add(dirLight);scene.add(dirLight.target);
   moonLight=new THREE.DirectionalLight(0x9fb4ff,0.0);scene.add(moonLight);
   hemi=new THREE.HemisphereLight(0xbfe0f5,0x6b6a4a,0.9);scene.add(hemi);
-  amb=new THREE.AmbientLight(0xffffff,0.25);scene.add(amb);
+  // A gently warm ambient fill (rather than pure white) neutralises the cold green tint that
+  // cast shadows would otherwise pick up from the blue skylight falling on the green lawn.
+  amb=new THREE.AmbientLight(0xffe9d2,0.25);scene.add(amb);
 
   // background scenery (mountain range one side, sea on the opposite side)
   buildScenery();
@@ -1520,7 +1522,9 @@ function updateSky(time){
   moonLight.position.copy(dir).multiplyScalar(-80);
   moonLight.intensity=Math.max(0,(s.star-0.3))*0.35;
   hemi.color.set(s.hSky);hemi.groundColor.set(s.hGr);hemi.intensity=s.hI*(1-rainDark*0.3);
-  amb.intensity=s.amb+rainDark*0.04;
+  // Lift the (warm) ambient fill in daylight so cast shadows are filled toward a neutral tone
+  // instead of reading as saturated green where the blue skylight meets the green grass.
+  amb.intensity=s.amb+dayBright*0.09+rainDark*0.04;
   starMat.opacity=s.star*(1-rainDark*0.4);stars.visible=starMat.opacity>0.02;
   // HUD
   updateClockUI(time,s.star);
