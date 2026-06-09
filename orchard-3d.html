@@ -146,6 +146,7 @@ header.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom
 .species.on{border-color:var(--clay);box-shadow:0 0 0 2px var(--clay);background:#fff}
 .iconbtn{border:none;background:#fff0;border-radius:9px;width:34px;height:34px;display:grid;place-items:center;font-size:16px;color:var(--ink-soft);flex:none}
 .iconbtn:hover{background:#0000000d;color:var(--bad)}
+.iconbtn.on,.iconbtn.on:hover{color:var(--gold-deep)}
 .pbody{padding:16px 18px;max-height:calc(100vh - 130px);overflow:auto}
 .section{margin-bottom:18px}
 .section>.htitle{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-soft);font-weight:700;margin-bottom:9px}
@@ -792,7 +793,7 @@ function updateUndoButtons(){
 /* ---------- Derived ---------- */
 function newTree(speciesKey){const sp=SPECIES[speciesKey];return{species:speciesKey,venture:sp.name+" Venture",
   entries:[],timeUnit:"days",notes:"",care:{enabled:false,intervalDays:7,lastActionAt:Date.now()},reqs:DEFAULT_REQS.map(l=>({id:uid(),label:l,done:false})),
-  fruitCount:100,fruitValue:50,picked:0,plantedAt:Date.now()};}
+  fruitCount:100,fruitValue:50,picked:0,priority:false,plantedAt:Date.now()};}
 // A venture with no requirements defined hasn't been started — nothing is planted, so its
 // progress is 0 (the plot stays empty) rather than treating "no requirements" as fully grown.
 function progress(t){if(!t.reqs.length)return 0;return t.reqs.filter(r=>r.done).length/t.reqs.length;}
@@ -1328,6 +1329,9 @@ function buildOrchard(){
     // attention ring (overdue for care) — pulses red, toggled in the animation loop
     const attn=new THREE.Mesh(new THREE.TorusGeometry(2.62,0.1,10,44),new THREE.MeshBasicMaterial({color:0xe23b3b}));
     attn.rotation.x=Math.PI/2;attn.position.y=0.08;attn.visible=false;pivot.add(attn);pivot.userData.attn=attn;
+    // priority ring (flagged as priority) — pulses violet to catch attention, driven in swayTrees
+    const prio=new THREE.Mesh(new THREE.TorusGeometry(2.88,0.11,10,44),new THREE.MeshBasicMaterial({color:0xb14cff,transparent:true}));
+    prio.rotation.x=Math.PI/2;prio.position.y=0.07;prio.visible=!!(plot.tree&&plot.tree.priority);pivot.add(prio);pivot.userData.prio=prio;
 
     if(plot.tree){
       const tg=makeTree(plot.tree,plot.id);pivot.add(tg);pivot.userData.tree=tg;
@@ -1644,6 +1648,10 @@ function swayTrees(el){
     if(pv.userData.gold){const s=1+Math.sin(el*2.2)*0.05;pv.userData.gold.scale.set(s,s,1);}
     if(pv.userData.attn){const on=!!(cs&&cs.overdue);pv.userData.attn.visible=on;
       if(on){const s=1+Math.sin(el*5)*0.06;pv.userData.attn.scale.set(s,s,1);pv.userData.attn.material.opacity=0.6+0.4*Math.abs(Math.sin(el*5));pv.userData.attn.material.transparent=true;}}
+    if(pv.userData.prio){const on=!!(plot&&plot.tree&&plot.tree.priority);pv.userData.prio.visible=on;
+      if(on){const s=1+Math.sin(el*4)*0.09;pv.userData.prio.scale.set(s,s,1);pv.userData.prio.material.opacity=0.45+0.55*Math.abs(Math.sin(el*4));
+        const ts=1+Math.sin(el*4)*0.05;tg.scale.setScalar(ts);}             // breathe the tree itself to catch the eye
+      else if(tg.scale.x!==1)tg.scale.setScalar(1);}
   }
 }
 
@@ -1775,6 +1783,11 @@ function harvest(n){const t=selectedTree();if(!t||!isReady(t))return;const got=M
   rebuildTree(selectedPlot());renderStats();renderBoard();renderPanel();toast(`🪙 Sold ${got} fruit · +${money(got*t.fruitValue)}`);}
 function harvestAll(){const t=selectedTree();if(!t)return;harvest(remaining(t));}
 function resetHarvest(){const t=selectedTree();if(!t)return;t.picked=0;save();rebuildTree(selectedPlot());renderStats();renderBoard();renderPanel();}
+function togglePriority(){const plot=selectedPlot();const t=plot&&plot.tree;if(!t)return;
+  t.priority=!t.priority;save();
+  const pv=pivots[plot.id];if(pv&&pv.userData.prio)pv.userData.prio.visible=t.priority;
+  renderPanel();
+  toast(t.priority?"⭐ Marked as priority — it'll blink in the orchard":"Priority cleared");}
 function deleteVenture(){const plot=selectedPlot();if(!plot||!plot.tree)return;
   showConfirm(`Dig up "${esc(plot.tree.venture)}"?`,"This removes the venture but keeps the empty plot.",()=>{
     plot.tree=null;save();rebuildTree(plot);renderStats();renderBoard();renderPanel();closeModal();toast("🪦 Venture removed");});}
@@ -1934,6 +1947,7 @@ function renderPanel(){
   <div class="phead"><div class="pe">${sp.emoji}</div>
     <div class="pnamewrap"><input class="vname" data-field="venture" value="${esc(t.venture)}" maxlength="40" />
       <button class="sp sp-change" data-action="changeSpecies" title="Change the tree species">${sp.name} <span class="caret">▾</span></button></div>
+    <button class="iconbtn${t.priority?' on':''}" data-action="togglePriority" title="${t.priority?'Priority venture — blinking in the orchard. Click to unset.':'Mark as a priority venture (it will blink in the orchard to catch your attention)'}">${t.priority?'⭐':'☆'}</button>
     <button class="iconbtn" data-action="delete" title="Dig up this venture">🗑️</button></div>
   ${moveBarHTML()}
   <div class="pbody">
@@ -2341,7 +2355,8 @@ panel.addEventListener("click",e=>{const tog=e.target.closest("[data-reqtoggle]"
   if(act==="addreq")addReqFromInput();else if(act==="delreq")delReq(arg);else if(act==="harvest")harvest(parseInt(arg,10));
   else if(act==="harvestAll")harvestAll();else if(act==="resetHarvest")resetHarvest();else if(act==="delete")deleteVenture();
   else if(act==="addEntry")addEntry();else if(act==="delEntry")delEntry(arg);
-  else if(act==="careDone")doCare();else if(act==="changeSpecies")openSpeciesPicker("change");});
+  else if(act==="careDone")doCare();else if(act==="changeSpecies")openSpeciesPicker("change");
+  else if(act==="togglePriority")togglePriority();});
 panel.addEventListener("change",e=>{if(e.target.dataset.action==="careToggle")setCareEnabled(e.target.checked);
   if(e.target.hasAttribute("data-move")&&e.target.value)moveVentureToOrchard(e.target.value);});
 panel.addEventListener("keydown",e=>{if(e.target.id==="newReq"&&e.key==="Enter"){e.preventDefault();addReqFromInput();}});
