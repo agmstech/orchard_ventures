@@ -1,6 +1,6 @@
 # 🌳 Orchard Ventures
 
-![version](https://img.shields.io/badge/version-1.6-e8a93a)
+![version](https://img.shields.io/badge/version-1.7-e8a93a)
 
 **Business ventures, gamified.** Turn your business ideas into a 3D orchard — every venture is a fruit tree you grow from seed to harvest.
 
@@ -17,13 +17,13 @@ It's a single self-contained HTML file — no build step, no server, no install.
 - **Harvest = sales** — set how many fruits a venture yields and the value of each; tap a fruit to "sell" it.
 - **Investment journal** — log money and time as separate dated entries; add, edit, or delete any line. Totals flow straight into profit and ROI.
 - **Notes with auto-save** — keep free-form notes per venture; they save automatically as you type.
-- **Care & attention** — require an action on each venture within a set interval. Overdue ventures are flagged for immediate attention and their plant health visibly wilts the longer they're neglected; tend them to restore health.
+- **Care & attention** — require an action on each venture, either repeating on a set interval or as a single one-time action that completes once it's done. Overdue ventures are flagged for immediate attention and their plant health visibly wilts the longer they're neglected; tend them to restore health.
 - **Multiple orchards** — keep separate orchards (tabs), and move ventures between them.
 - **Cultivators & roles** — build a farm organization tree of farmers/cultivators with roles, reporting lines, and per-person task lists.
 - **Multi-currency & locations** — pick from a dozen currencies and locations; the location's hemisphere and climate drive realistic seasons and bias the weather (tropical wet/dry, temperate four-season, arid…).
 - **Profit leaderboard** — ventures ranked live by net profit, ROI, or sales, with a golden crown on the leader.
 - **Living scene** — a sun that follows the time of day with a full day → night cycle, drifting clouds, flying birds, and weather that reflects the season.
-- **Full camera control** — orbit, zoom, and rotate the garden on the X, Y, and Z axes; add or remove plots freely. Toggle venture names and info labels independently.
+- **Full camera control** — orbit, zoom, and rotate the garden on the X, Y, and Z axes; add, remove, or drag plots to rearrange them freely. Toggle venture names and info labels independently. Your zoom and orientation are kept when you switch between orchards.
 - **Saved locally** — your orchard persists in the browser, with one-click JSON backup and restore. Saved data is versioned and older saves/backups are automatically upgraded.
 
 ## 🚀 Getting started

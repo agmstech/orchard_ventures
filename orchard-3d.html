@@ -60,6 +60,7 @@ header.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom
 /* Height tracks the viewport so the full orchard fits above the fold on most screens
    (subtracting the header/stats/orchard-bar chrome), capped so it never gets huge. */
 #canvasWrap{position:relative;width:100%;height:clamp(420px,calc(100vh - 196px),600px);background:#0c1224;touch-action:none;overflow:hidden}
+#canvasWrap.rearranging{cursor:grab}
 @media(max-width:560px){#canvasWrap{height:460px}}
 #c{display:block;width:100%;height:100%}
 #labels{position:absolute;inset:0;pointer-events:none;overflow:hidden}
@@ -169,6 +170,9 @@ header.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom
 .care-done{flex:none;border:1.5px solid var(--leaf);background:var(--leaf);color:#fff;font-weight:700;font-size:12px;border-radius:9px;padding:8px 12px;cursor:pointer;font-family:"Spline Sans",sans-serif}
 .care-done:hover{filter:brightness(1.05)}
 .care-done:disabled{opacity:.4;cursor:not-allowed;filter:grayscale(.4)}
+.care-once{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:var(--ink-soft);cursor:pointer;margin:-2px 0 9px}
+.care-once input{accent-color:var(--leaf);cursor:pointer}
+.section.care.disabled .care-once{opacity:.55}
 .care-health{margin-bottom:6px}
 .care-health .lbl{font-size:11px;color:var(--ink-soft);margin-bottom:4px}
 .care-health .lbl b{color:var(--ink)}
@@ -398,7 +402,7 @@ header.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom
             <div><div class="clk" id="seasonLbl" style="font-size:13px">Season</div><div class="ph" id="locLbl">Manila</div></div>
           </div>
 
-          <div class="scene-hint">Drag to orbit · scroll/pinch to zoom · tap a plot to plant · tap fruit to harvest</div>
+          <div class="scene-hint">Drag to orbit · scroll/pinch to zoom · tap a plot to plant · tap fruit to harvest · 🔀 to rearrange plots</div>
 
           <!-- camera dock -->
           <div class="dock view">
@@ -425,6 +429,7 @@ header.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom
             <div class="divider"></div>
             <button class="i3 sm" id="btnAddPlot" title="Add a plot">🟫</button>
             <button class="i3 sm" id="btnDelPlot" title="Remove selected plot">🗑️</button>
+            <button class="i3 sm" id="btnRearrange" title="Rearrange plots — drag a plot to a new spot">🔀</button>
           </div>
         </div>
       </div>
@@ -467,7 +472,7 @@ header.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom
 /* ---------- App version ----------
    Human-facing release number for the app/code. Bump on each notable release.
    (Distinct from SCHEMA_VERSION below, which tracks the saved-data shape.) */
-const APP_VERSION="1.6";
+const APP_VERSION="1.7";
 
 /* ---------- Species ---------- */
 const SPECIES = {
@@ -691,8 +696,8 @@ function migrateTree(t){
   }
   if(!t.timeUnit)t.timeUnit="days";
   if(typeof t.notes!=="string")t.notes="";
-  if(!t.care)t.care={enabled:false,intervalDays:7,lastActionAt:t.plantedAt||Date.now()};
-  else{t.care.intervalDays=+t.care.intervalDays||7;t.care.lastActionAt=+t.care.lastActionAt||Date.now();t.care.enabled=!!t.care.enabled;}
+  if(!t.care)t.care={enabled:false,intervalDays:7,lastActionAt:t.plantedAt||Date.now(),oneTime:false,done:false};
+  else{t.care.intervalDays=+t.care.intervalDays||7;t.care.lastActionAt=+t.care.lastActionAt||Date.now();t.care.enabled=!!t.care.enabled;t.care.oneTime=!!t.care.oneTime;t.care.done=!!t.care.done;}
   t.entries=t.entries.map(e=>({id:e.id||uid(),date:e.date||todayISO(),note:e.note||"",money:+e.money||0,time:+e.time||0}));
   delete t.money;delete t.time;
   return t;
@@ -792,7 +797,7 @@ function updateUndoButtons(){
 
 /* ---------- Derived ---------- */
 function newTree(speciesKey){const sp=SPECIES[speciesKey];return{species:speciesKey,venture:sp.name+" Venture",
-  entries:[],timeUnit:"days",notes:"",care:{enabled:false,intervalDays:7,lastActionAt:Date.now()},reqs:DEFAULT_REQS.map(l=>({id:uid(),label:l,done:false})),
+  entries:[],timeUnit:"days",notes:"",care:{enabled:false,intervalDays:7,lastActionAt:Date.now(),oneTime:false,done:false},reqs:DEFAULT_REQS.map(l=>({id:uid(),label:l,done:false})),
   fruitCount:100,fruitValue:50,picked:0,priority:false,plantedAt:Date.now()};}
 // A venture with no requirements defined hasn't been started — nothing is planted, so its
 // progress is 0 (the plot stays empty) rather than treating "no requirements" as fully grown.
@@ -823,21 +828,27 @@ function fmtDateTime(ts){try{return new Date(ts).toLocaleString(undefined,{month
 function fmtDuration(ms){const d=ms/DAY_MS;if(d<1)return"less than a day";if(d<14)return Math.round(d)+" day"+(Math.round(d)===1?"":"s");if(d<60)return Math.round(d/7)+" weeks";return Math.round(d/30)+" months";}
 /* ---------- Care / attention ---------- */
 const CARE_DECAY=8;            // health points lost per day a venture is overdue for action
-function careCfg(t){if(!t.care)t.care={enabled:false,intervalDays:7,lastActionAt:t.plantedAt||Date.now()};return t.care;}
+function careCfg(t){if(!t.care)t.care={enabled:false,intervalDays:7,lastActionAt:t.plantedAt||Date.now(),oneTime:false,done:false};return t.care;}
 // Derives attention status & health purely from the interval and the last time the venture was tended.
+// A one-time action stops requiring attention once it has been marked done (c.done).
 function careState(t){
   const c=careCfg(t);
+  const oneTime=!!c.oneTime,done=!!c.done;
   const intMs=Math.max(1,c.intervalDays)*DAY_MS;
+  const completed=oneTime&&done;                 // a finished one-time action — nothing more to do
   const since=Date.now()-(c.lastActionAt||Date.now());
-  const dueIn=intMs-since;                       // ms until next action is due (negative = overdue)
-  const overdueDays=Math.max(0,-dueIn/DAY_MS);
-  const health=c.enabled?Math.max(0,Math.min(100,100-overdueDays*CARE_DECAY)):100;
-  const overdue=c.enabled&&dueIn<0;
-  const dueSoon=c.enabled&&!overdue&&dueIn<Math.max(DAY_MS,intMs*0.2);
-  return{enabled:c.enabled,intervalDays:c.intervalDays,dueIn,overdueDays,health,overdue,dueSoon,nextDue:(c.lastActionAt||Date.now())+intMs};
+  const dueIn=intMs-since;                        // ms until the (next) action is due (negative = overdue)
+  const overdueDays=completed?0:Math.max(0,-dueIn/DAY_MS);
+  const health=(c.enabled&&!completed)?Math.max(0,Math.min(100,100-overdueDays*CARE_DECAY)):100;
+  const overdue=c.enabled&&!completed&&dueIn<0;
+  const dueSoon=c.enabled&&!completed&&!overdue&&dueIn<Math.max(DAY_MS,intMs*0.2);
+  return{enabled:c.enabled,intervalDays:c.intervalDays,oneTime,completed,dueIn,overdueDays,health,overdue,dueSoon,nextDue:(c.lastActionAt||Date.now())+intMs};
 }
 function needsAttention(t){const s=careState(t);return s.enabled&&(s.overdue||s.dueSoon);}
-function markCared(t){careCfg(t).lastActionAt=Date.now();}
+// Tend a venture: a one-time action is completed for good; a recurring one resets its clock.
+function markCared(t){const c=careCfg(t);if(c.oneTime)c.done=true;else c.lastActionAt=Date.now();}
+// Start (or restart) the countdown without completing it — used when (re)enabling or switching modes.
+function resetCareTimer(t){const c=careCfg(t);c.lastActionAt=Date.now();c.done=false;}
 function plotsNeedingAttention(){return treesPlots().filter(p=>needsAttention(p.tree));}
 
 // Projects a harvest date from how fast requirements have been ticked since planting.
@@ -872,6 +883,9 @@ const SPACING=7.2;
 let camTheta=0.7,camPhi=1.02,camRadius=34;
 const target=new THREE.Vector3(0,2.2,0);
 let dragging=false,lastX=0,lastY=0,pinchD=0;
+// Plot rearranging: when on, dragging a plot glides it into a new grid slot (issue #40).
+let rearrangeMode=false;
+const reorder={active:false,plotId:null,moved:false};
 
 // day/night & weather
 function realTimeOfDay(){const d=new Date();return d.getHours()+d.getMinutes()/60+d.getSeconds()/3600;}
@@ -1303,6 +1317,52 @@ function gridPositions(n){
     out.push([ (c-(cols-1)/2)*SPACING, (r-(rows-1)/2)*SPACING ]);}
   return out;
 }
+// Point each existing plot pivot at its current grid slot; the animation loop glides them there.
+function layoutPlots(){
+  const pos=gridPositions(state.plots.length);
+  state.plots.forEach((plot,i)=>{const pv=pivots[plot.id];if(pv)pv.userData.targetPos=new THREE.Vector3(pos[i][0],0,pos[i][1]);});
+}
+// Move a plot to a new index in the order, re-laying the grid (used while dragging to rearrange).
+function movePlotToSlot(plotId,slot){
+  const from=state.plots.findIndex(p=>p.id===plotId);
+  if(from<0||slot<0||slot>=state.plots.length||slot===from)return;
+  const [p]=state.plots.splice(from,1);
+  state.plots.splice(slot,0,p);
+  reorder.moved=true;
+  layoutPlots();
+}
+// Which plot (if any) is under a screen point.
+function plotIdAt(cx,cy){
+  const wrap=document.getElementById("canvasWrap");const r=wrap.getBoundingClientRect();
+  mouse.x=((cx-r.left)/r.width)*2-1;mouse.y=-((cy-r.top)/r.height)*2+1;
+  ray.setFromCamera(mouse,camera);
+  const hits=ray.intersectObjects(world.children,true);
+  for(const h of hits){let o=h.object;while(o){if(o.userData&&o.userData.plotId)return o.userData.plotId;o=o.parent;}}
+  return null;
+}
+// Nearest grid slot index to a screen point — projects each slot centre and picks the closest.
+// Projecting (rather than ray-vs-ground) keeps it correct under any world rotation.
+function slotAt(cx,cy){
+  const wrap=document.getElementById("canvasWrap");const r=wrap.getBoundingClientRect();
+  const n=state.plots.length;const pos=gridPositions(n);const v=new THREE.Vector3();
+  let best=-1,bestD=Infinity;
+  for(let i=0;i<n;i++){
+    v.set(pos[i][0],0,pos[i][1]);world.localToWorld(v);v.project(camera);
+    const sx=r.left+(v.x*0.5+0.5)*r.width,sy=r.top+(-v.y*0.5+0.5)*r.height;
+    const d=Math.hypot(cx-sx,cy-sy);if(d<bestD){bestD=d;best=i;}
+  }
+  return best;
+}
+// Glide pivots toward their target slots each frame; the plot being dragged floats up a touch.
+function updatePlotPositions(dt){
+  const k=Math.min(1,dt*9);
+  for(const id in pivots){const pv=pivots[id];const tp=pv.userData.targetPos;if(!tp)continue;
+    const lift=(reorder.active&&reorder.plotId===id)?0.9:0;
+    pv.position.x+=(tp.x-pv.position.x)*k;
+    pv.position.z+=(tp.z-pv.position.z)*k;
+    pv.position.y+=((tp.y+lift)-pv.position.y)*k;
+  }
+}
 function clearLabels(){const cont=document.getElementById("labels");cont.innerHTML="";for(const k in labelEls)delete labelEls[k];}
 function buildOrchard(){
   // remove pivots
@@ -1314,6 +1374,7 @@ function buildOrchard(){
   state.plots.forEach((plot,i)=>{
     const pivot=new THREE.Group();
     pivot.position.set(pos[i][0],0,pos[i][1]);
+    pivot.userData.targetPos=new THREE.Vector3(pos[i][0],0,pos[i][1]);   // glide goal for smooth rearranging
     pivot.userData.plotId=plot.id;
     // soil base
     const base=new THREE.Mesh(new THREE.CylinderGeometry(2.3,2.5,0.35,20),soilMat);
@@ -1675,10 +1736,19 @@ function updateCamera(){
 }
 function bindCameraControls(){
   const el=document.getElementById("canvasWrap");
-  el.addEventListener("pointerdown",e=>{if(e.target.closest(".dock,.hud"))return;dragging=true;lastX=e.clientX;lastY=e.clientY;el.setPointerCapture&&el.setPointerCapture(e.pointerId);});
-  el.addEventListener("pointermove",e=>{if(!dragging)return;const dx=e.clientX-lastX,dy=e.clientY-lastY;lastX=e.clientX;lastY=e.clientY;
+  el.addEventListener("pointerdown",e=>{if(e.target.closest(".dock,.hud"))return;
+    if(rearrangeMode){const hid=plotIdAt(e.clientX,e.clientY);if(hid){   // grab a plot to reorder instead of orbiting
+      reorder.active=true;reorder.plotId=hid;reorder.moved=false;
+      state.selectedPlotId=hid;updateSelectionRings();renderPanel();
+      el.setPointerCapture&&el.setPointerCapture(e.pointerId);return;}}
+    dragging=true;lastX=e.clientX;lastY=e.clientY;el.setPointerCapture&&el.setPointerCapture(e.pointerId);});
+  el.addEventListener("pointermove",e=>{
+    if(reorder.active){const slot=slotAt(e.clientX,e.clientY);if(slot>=0)movePlotToSlot(reorder.plotId,slot);return;}
+    if(!dragging)return;const dx=e.clientX-lastX,dy=e.clientY-lastY;lastX=e.clientX;lastY=e.clientY;
     camTheta-=dx*0.005;camPhi-=dy*0.005;markViewDirty();});
-  window.addEventListener("pointerup",()=>{if(dragging)markViewDirty();dragging=false;});
+  window.addEventListener("pointerup",()=>{
+    if(reorder.active){reorder.active=false;reorder.plotId=null;if(reorder.moved){save();renderStats();renderBoard();toast("🔀 Plot moved");}}
+    if(dragging)markViewDirty();dragging=false;});
   el.addEventListener("wheel",e=>{e.preventDefault();camRadius*=(1+e.deltaY*0.0012);markViewDirty();},{passive:false});
   // touch pinch
   el.addEventListener("touchmove",e=>{if(e.touches.length===2){e.preventDefault();const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
@@ -1735,6 +1805,7 @@ function animate(){
   updateMoneyRain(dt,el);
   updateBirds(dt,el);
   updateScenery(el);
+  updatePlotPositions(dt);
   updateCamera();
   updateUnderground();
   renderer.render(scene,camera);
@@ -1804,8 +1875,10 @@ function updateField(field,val){const t=selectedTree();if(!t)return;let geo=fals
   const plot=selectedPlot();if(plot&&labelEls[plot.id])updateLabelContent(plot);
   refreshDerived();
 }
-function setCareEnabled(on){const t=selectedTree();if(!t)return;careCfg(t).enabled=!!on;if(on)markCared(t);save();renderPanel();renderStats();refreshAttention();}
-function doCare(){const t=selectedTree();if(!t)return;markCared(t);save();renderPanel();renderStats();refreshAttention();toast("🌿 Tended — plant health restored");}
+function setCareEnabled(on){const t=selectedTree();if(!t)return;careCfg(t).enabled=!!on;if(on)resetCareTimer(t);save();renderPanel();renderStats();refreshAttention();}
+// Toggle between a recurring action and a single one-time action, restarting the countdown fresh.
+function setCareOneTime(on){const t=selectedTree();if(!t)return;careCfg(t).oneTime=!!on;resetCareTimer(t);save();renderPanel();renderStats();refreshAttention();}
+function doCare(){const t=selectedTree();if(!t)return;const one=careCfg(t).oneTime;markCared(t);save();renderPanel();renderStats();refreshAttention();toast(one?"✅ One-time action completed":"🌿 Tended — plant health restored");}
 let _notesSavedTimer=null;
 function flashNotesSaved(){const el=document.getElementById("notesSaved");if(!el)return;
   el.classList.add("show");clearTimeout(_notesSavedTimer);
@@ -1870,7 +1943,8 @@ function renderOrchardBar(){
 }
 function switchOrchard(id){if(!state.orchards.some(o=>o.id===id))return;state.currentOrchardId=id;save();
   applyCurrency();updateSeasonHUD();nextWxAt=performance.now()+600;   // the new orchard's own settings take effect
-  buildOrchard();fitCamera();updateSelectionRings();renderOrchardBar();renderStats();renderBoard();renderPanel();}
+  // Keep the current camera zoom/orientation when switching — don't re-frame (issue #39).
+  buildOrchard();updateSelectionRings();renderOrchardBar();renderStats();renderBoard();renderPanel();}
 function newOrchard(){
   // a fresh orchard starts from a copy of the current one's settings (convenient) but its own empty team
   const o={id:uid(),name:"Orchard "+(state.orchards.length+1),plots:[{id:uid(),tree:null},{id:uid(),tree:null},{id:uid(),tree:null}],selectedPlotId:null,
@@ -1917,17 +1991,20 @@ function moveBarHTML(){
 function careSectionHTML(t){
   const c=careCfg(t);const s=careState(t);
   const status=!c.enabled?'<span class="care-state off">Off — no action required</span>'
+    :s.completed?`<span class="care-state ok">✓ Completed — one-time action done</span>`
     :s.overdue?`<span class="care-state bad">⚠️ Overdue by ${fmtDuration(s.overdueDays*DAY_MS)}</span>`
     :s.dueSoon?`<span class="care-state soon">⏳ Action due ${s.dueIn<DAY_MS?'within a day':'in '+fmtDuration(s.dueIn)}</span>`
-    :`<span class="care-state ok">✓ Healthy · next action in ${fmtDuration(s.dueIn)}</span>`;
+    :`<span class="care-state ok">✓ Healthy · ${c.oneTime?'action due':'next action'} in ${fmtDuration(s.dueIn)}</span>`;
   const hc=s.health>=66?'good':s.health>=33?'mid':'low';
+  const doneDisabled=!c.enabled||s.completed;
   return `<div class="section care ${c.enabled?'':'disabled'} ${s.overdue?'overdue':''}">
     <div class="htitle">🩺 Care &amp; attention
       <label class="care-switch"><input type="checkbox" data-action="careToggle" ${c.enabled?'checked':''} /> require action</label></div>
     <div class="care-row">
-      <div class="field"><label>Action needed every</label><div class="inputwrap"><input type="number" min="1" step="1" data-field="careInterval" value="${c.intervalDays}" ${c.enabled?'':'disabled'} /><span class="post">days</span></div></div>
-      <button class="care-done" data-action="careDone" ${c.enabled?'':'disabled'}>✅ Mark action done</button>
+      <div class="field"><label>${c.oneTime?'Action needed within':'Action needed every'}</label><div class="inputwrap"><input type="number" min="1" step="1" data-field="careInterval" value="${c.intervalDays}" ${c.enabled?'':'disabled'} /><span class="post">days</span></div></div>
+      <button class="care-done" data-action="careDone" ${doneDisabled?'disabled':''}>${s.completed?'✅ Done':'✅ Mark action done'}</button>
     </div>
+    <label class="care-once"><input type="checkbox" data-action="careOnce" ${c.oneTime?'checked':''} ${c.enabled?'':'disabled'} /> One-time action — don’t repeat once done</label>
     <div class="care-health"><div class="lbl">Plant health <b>${Math.round(s.health)}%</b></div>
       <div class="health-bar ${hc}"><i style="width:${s.health}%"></i></div></div>
     ${status}
@@ -2221,7 +2298,7 @@ function openHelp(){
     <span class="k">📓 Journal</span><span>Log money &amp; time as separate dated entries in each tree's investment journal — add, edit or delete any line. Totals show on the floating tag.</span>
     <span class="k">👑 Crown</span><span>The most profitable venture wears a golden crown and glowing ring. Net profit = sales − money invested.</span>
   </div>
-  <p style="font-size:12.5px;color:var(--ink-soft)"><b>Garden controls:</b> drag to orbit · scroll/pinch to zoom · the View dock rotates on the X, Y and Z axes · 🟫 adds a plot, 🗑️ removes the selected one. The sun follows the time-of-day slider (press ▶️ to run a full day→night cycle), and weather shifts randomly between sun, wind and rain — or pick one yourself.</p>
+  <p style="font-size:12.5px;color:var(--ink-soft)"><b>Garden controls:</b> drag to orbit · scroll/pinch to zoom · the View dock rotates on the X, Y and Z axes · 🟫 adds a plot, 🗑️ removes the selected one, 🔀 lets you drag plots to rearrange them. The sun follows the time-of-day slider (press ▶️ to run a full day→night cycle), and weather shifts randomly between sun, wind and rain — or pick one yourself.</p>
   <p style="font-size:12.5px;color:var(--ink-soft)">Everything saves privately in your browser. Use <b>Backup</b> / <b>Restore</b> to move records via a JSON file.</p></div></div></div>`;
 }
 function showConfirm(title,msg,onYes){modalRoot._yes=onYes;
@@ -2358,6 +2435,7 @@ panel.addEventListener("click",e=>{const tog=e.target.closest("[data-reqtoggle]"
   else if(act==="careDone")doCare();else if(act==="changeSpecies")openSpeciesPicker("change");
   else if(act==="togglePriority")togglePriority();});
 panel.addEventListener("change",e=>{if(e.target.dataset.action==="careToggle")setCareEnabled(e.target.checked);
+  if(e.target.dataset.action==="careOnce")setCareOneTime(e.target.checked);
   if(e.target.hasAttribute("data-move")&&e.target.value)moveVentureToOrchard(e.target.value);});
 panel.addEventListener("keydown",e=>{if(e.target.id==="newReq"&&e.key==="Enter"){e.preventDefault();addReqFromInput();}});
 // toolbar
@@ -2396,6 +2474,9 @@ document.getElementById("btnNames").onclick=function(){showNames=!showNames;this
 // world dock
 document.getElementById("btnAddPlot").onclick=addPlot;
 document.getElementById("btnDelPlot").onclick=delPlot;
+document.getElementById("btnRearrange").onclick=function(){rearrangeMode=!rearrangeMode;this.classList.toggle("on",rearrangeMode);
+  const wrap=document.getElementById("canvasWrap");if(wrap)wrap.classList.toggle("rearranging",rearrangeMode);
+  toast(rearrangeMode?"🔀 Rearrange on — drag plots to reorder":"🔀 Rearrange off");};
 const slider=document.getElementById("timeSlider");
 slider.addEventListener("input",()=>{timeOfDay=slider.value/60;autoTime=false;liveClock=false;document.getElementById("btnPlay").textContent="▶️";});
 function syncTimeSlider(){slider.value=Math.round(timeOfDay*60);}
