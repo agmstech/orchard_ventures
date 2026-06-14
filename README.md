@@ -23,7 +23,7 @@ It's a single self-contained HTML file — no build step, no server, no install.
 - **Multi-currency & locations** — pick from a dozen currencies and locations; the location's hemisphere and climate drive realistic seasons and bias the weather (tropical wet/dry, temperate four-season, arid…).
 - **Profit leaderboard** — ventures ranked live by net profit, ROI, or sales, with a golden crown on the leader.
 - **Living scene** — a sun that follows the time of day with a full day → night cycle, drifting clouds, flying birds, and weather that reflects the season.
-- **Full camera control** — orbit, zoom, and rotate the garden on the X, Y, and Z axes; add, remove, or drag plots to rearrange them freely. Toggle venture names and info labels independently. Your zoom and orientation are kept when you switch between orchards.
+- **Full camera control** — orbit, zoom, and rotate the garden on the X, Y, and Z axes; add, remove, or drag plots to rearrange them freely. Toggle venture names and info labels independently. Your zoom carries across orchards, while each orchard remembers its own orientation — switch tabs and it snaps back to the tilt you left it at.
 - **Saved locally** — your orchard persists in the browser, with one-click JSON backup and restore. Saved data is versioned and older saves/backups are automatically upgraded.
 
 ## 🚀 Getting started
