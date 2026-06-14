@@ -472,7 +472,7 @@ header.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom
 /* ---------- App version ----------
    Human-facing release number for the app/code. Bump on each notable release.
    (Distinct from SCHEMA_VERSION below, which tracks the saved-data shape.) */
-const APP_VERSION="1.8";
+const APP_VERSION="1.9";
 
 /* ---------- Species ---------- */
 const SPECIES = {
@@ -681,7 +681,7 @@ function pickWeather(){const w=weatherWeights();const r=Math.random();
 
 /* ---------- Storage ---------- */
 // Current data schema version. Bump when the saved shape changes; migrateStore() upgrades older data.
-const SCHEMA_VERSION=4;
+const SCHEMA_VERSION=5;
 const Store={KEY:"orchard_ventures_3d_v1",_mem:null,
   read(){try{const r=localStorage.getItem(this.KEY);return r?JSON.parse(r):null;}catch(e){return this._mem;}},
   write(d){try{localStorage.setItem(this.KEY,JSON.stringify(d));}catch(e){this._mem=d;}}};
@@ -719,8 +719,11 @@ function curOrchard(){return curOrchardOf(state);}
        top-level settings/team are inherited as each orchard's starting values, so
        existing single-config saves carry over unchanged.
      • v3 → v4: each orchard gains its own `orientation` (the View-dock world tilt on
-       the X/Y/Z axes), defaulting to none. Older saves that lack it normalise to a
-       flat {0,0,0} orientation. (See issue #43.)                                   */
+       the X/Y/Z axes), defaulting to none. (See issue #43.)
+     • v4 → v5: that per-orchard `orientation` grows into a full per-orchard `view` —
+       camera orbit angle, zoom and target as well as the X/Y/Z tilt — so every orchard
+       reopens exactly as you left it. Any v4 orientation folds into the new view's tilt;
+       camera fields are left unset until the orchard has actually been framed.        */
 function migrateStore(raw){
   raw=raw||{};
   let orchards;
@@ -728,14 +731,14 @@ function migrateStore(raw){
     orchards=raw.orchards.map(o=>({id:o.id||uid(),name:o.name||"Orchard",
       plots:Array.isArray(o.plots)?o.plots:[],selectedPlotId:o.selectedPlotId||null,
       settings:normalizeSettings(o.settings||raw.settings),team:normalizeTeam(o.team||raw.team),
-      orientation:normalizeOrientation(o.orientation)}));
+      view:normalizeView(o.view,o.orientation)}));
   }else{
     let plots;
     if(Array.isArray(raw.plots))plots=raw.plots;
     else if(Array.isArray(raw.trees))plots=raw.trees.map(t=>({id:uid(),tree:t}));   // earliest format
     else plots=[{id:uid(),tree:null},{id:uid(),tree:null},{id:uid(),tree:null}];
     orchards=[{id:uid(),name:"My Orchard",plots,selectedPlotId:raw.selectedPlotId||null,
-      settings:normalizeSettings(raw.settings),team:normalizeTeam(raw.team),orientation:normalizeOrientation(null)}];
+      settings:normalizeSettings(raw.settings),team:normalizeTeam(raw.team),view:normalizeView(null,null)}];
   }
   orchards.forEach(o=>o.plots.forEach(p=>{if(p.tree)migrateTree(p.tree);}));
   return {orchards,
@@ -749,14 +752,22 @@ function buildState(){
   // settings (currency/location/season) and team are per-orchard; these always point at the active one
   Object.defineProperty(obj,"settings",{get(){return curOrchardOf(obj).settings;},set(v){curOrchardOf(obj).settings=v;}});
   Object.defineProperty(obj,"team",{get(){return curOrchardOf(obj).team;},set(v){curOrchardOf(obj).team=v;}});
-  // the view orientation (world tilt) is per-orchard too; always points at the active one
-  Object.defineProperty(obj,"orientation",{get(){return curOrchardOf(obj).orientation;},set(v){curOrchardOf(obj).orientation=v;}});
+  // the camera view (orbit/zoom/target/tilt) is per-orchard too; always points at the active one
+  Object.defineProperty(obj,"view",{get(){return curOrchardOf(obj).view;},set(v){curOrchardOf(obj).view=v;}});
   return obj;
 }
 let state=buildState();
 function normalizeSettings(s){s=s||{};return{currency:CURRENCIES[s.currency]?s.currency:"PHP",location:LOCATIONS[s.location]?s.location:"manila",season:(s.season==="auto"||SEASONS[s.season])?s.season:"auto"};}
-// The orchard's view orientation — the world tilt set with the View dock — saved per orchard (issue #43).
-function normalizeOrientation(o){o=o||{};return{x:Number.isFinite(o.x)?o.x:0,y:Number.isFinite(o.y)?o.y:0,z:Number.isFinite(o.z)?o.z:0};}
+// A per-orchard camera view: orbit angle (theta/phi), zoom (radius), look-at target and the
+// X/Y/Z world tilt — saved per orchard so each reopens exactly as left (issues #43, #46).
+// Camera fields stay null until the orchard has been framed; the tilt defaults flat. `legacy`
+// is the old v4 `orientation:{x,y,z}`, folded into the tilt for saves upgrading from v4.
+function normalizeView(v,legacy){v=v||{};legacy=legacy||{};
+  const n=x=>Number.isFinite(x)?x:null;
+  return{theta:n(v.theta),phi:n(v.phi),radius:n(v.radius),tx:n(v.tx),ty:n(v.ty),tz:n(v.tz),
+    rx:Number.isFinite(v.rx)?v.rx:(Number.isFinite(legacy.x)?legacy.x:0),
+    ry:Number.isFinite(v.ry)?v.ry:(Number.isFinite(legacy.y)?legacy.y:0),
+    rz:Number.isFinite(v.rz)?v.rz:(Number.isFinite(legacy.z)?legacy.z:0)};}
 function normalizeTeam(t){if(!Array.isArray(t))return[];const ids=new Set(t.map(m=>m&&m.id).filter(Boolean));
   return t.filter(m=>m&&m.id).map(m=>({id:m.id,name:typeof m.name==="string"?m.name:"New cultivator",role:typeof m.role==="string"?m.role:"Cultivator",
     parentId:(m.parentId&&ids.has(m.parentId)&&m.parentId!==m.id)?m.parentId:null,
@@ -786,11 +797,16 @@ function pushHistory(){
 function applySnapshot(str){
   applyingHistory=true;
   try{
+    // The camera view isn't an editable action, so undo/redo must not yank it around: carry each
+    // orchard's live view across the snapshot (flushing the active one first so it's current).
+    flushOrchardView();
+    const prevViews={};state.orchards.forEach(o=>{if(o&&o.id)prevViews[o.id]=o.view;});
     const m=migrateStore(JSON.parse(str));
+    m.orchards.forEach(o=>{if(prevViews[o.id])o.view=prevViews[o.id];});
     state.orchards=m.orchards;state.currentOrchardId=m.currentOrchardId;state.sortBy=m.sortBy;
     applyCurrency();updateSeasonHUD();Store.write(snapshotData());
-    if(typeof buildOrchard==="function"){   // keep the camera where it is — only rebuild content
-      buildOrchard();applyOrchardOrientation();updateSelectionRings();renderOrchardBar();renderStats();renderBoard();renderPanel();syncSort();refreshAttention();
+    if(typeof buildOrchard==="function"){   // rebuild content; restore the (now-current) orchard's own view
+      buildOrchard();applyOrchardView();updateSelectionRings();renderOrchardBar();renderStats();renderBoard();renderPanel();syncSort();refreshAttention();
     }
   }finally{applyingHistory=false;}
 }
@@ -909,45 +925,58 @@ let showLabels=true;   // info rows (invested / time / sales / stage)
 let showNames=true;    // venture name plate
 
 /* ---------- View persistence ----------
-   The camera angle/zoom, the name/label toggles and the weather mode are remembered
-   per browser (separate from orchard data) so the orchard opens framed the way it was
-   last left, without re-orienting on every reload. The world orientation (the View-dock
-   tilt) is NOT kept here — it lives on each orchard so every orchard keeps its own
-   orientation and switching tabs restores it (issue #43). */
+   The name/label toggles and the weather mode are remembered per browser (they're UI
+   preferences, not tied to any one orchard). The camera view itself — orbit angle, zoom,
+   look-at target and the X/Y/Z world tilt — is saved PER ORCHARD instead, so switching
+   tabs returns each orchard to exactly the view you left it at (issues #43, #46). */
 const VIEW_KEY="orchard_ventures_view_v1";
 let _viewSaveT=null;
 function saveViewSettings(){
-  try{
-    const d={camTheta,camPhi,camRadius,
-      tx:target.x,ty:target.y,tz:target.z,
-      showLabels,showNames,autoWx,weather};
-    localStorage.setItem(VIEW_KEY,JSON.stringify(d));
-  }catch(e){}
+  try{localStorage.setItem(VIEW_KEY,JSON.stringify({showLabels,showNames,autoWx,weather}));}catch(e){}
 }
-// Debounced — camera drags fire continuously, so coalesce writes.
+// Debounced — toggles change rarely, but keep it cheap.
 function markViewDirty(){if(_viewSaveT)return;_viewSaveT=setTimeout(()=>{_viewSaveT=null;saveViewSettings();},500);}
 
-/* The world tilt is per-orchard data. applyOrchardOrientation() points the world at the
-   active orchard's saved tilt; persistOrientation() writes the current tilt back onto it.
-   It writes straight to the store (no undo entry) so the tilt rides along with the orchard
-   in saves/backups without flooding the undo history. The View dock only nudges the tilt in
-   discrete steps, so an immediate write per click is fine — no debounce needed. */
-function applyOrchardOrientation(){if(!world)return;const o=curOrchard();const r=(o&&o.orientation)||{x:0,y:0,z:0};world.rotation.set(r.x||0,r.y||0,r.z||0);}
-function persistOrientation(){if(!world)return;const o=curOrchard();if(!o)return;
-  o.orientation={x:world.rotation.x,y:world.rotation.y,z:world.rotation.z};Store.write(snapshotData());}
+/* The camera view is per-orchard data. applyOrchardView() points the camera/world at the
+   active orchard's saved view (skipping camera fields it has never framed); persistView()
+   writes the current view back onto it. persistView writes straight to the store (no undo
+   entry) so the view rides along in saves/backups without flooding the undo history.
+   Camera drags fire continuously, so persisting is debounced via markOrchardViewDirty();
+   flushOrchardView() forces a pending save out immediately (e.g. before leaving an orchard). */
+function applyOrchardView(){
+  if(!world)return;const v=state.view;if(!v)return;
+  if(Number.isFinite(v.theta))camTheta=v.theta;
+  if(Number.isFinite(v.phi))camPhi=v.phi;
+  if(Number.isFinite(v.radius))camRadius=v.radius;
+  if(Number.isFinite(v.tx)&&Number.isFinite(v.ty)&&Number.isFinite(v.tz))target.set(v.tx,v.ty,v.tz);
+  world.rotation.set(v.rx||0,v.ry||0,v.rz||0);
+}
+let _ovSaveT=null;
+function persistView(){
+  if(!world)return;const o=curOrchard();if(!o)return;
+  o.view={theta:camTheta,phi:camPhi,radius:camRadius,tx:target.x,ty:target.y,tz:target.z,
+    rx:world.rotation.x,ry:world.rotation.y,rz:world.rotation.z};
+  Store.write(snapshotData());
+}
+function markOrchardViewDirty(){if(_ovSaveT)return;_ovSaveT=setTimeout(()=>{_ovSaveT=null;persistView();},400);}
+function flushOrchardView(){if(_ovSaveT){clearTimeout(_ovSaveT);_ovSaveT=null;}persistView();}
 
 function loadViewSettings(){
   let d;try{d=JSON.parse(localStorage.getItem(VIEW_KEY));}catch(e){d=null;}
   if(!d)return;
-  if(Number.isFinite(d.camTheta))camTheta=d.camTheta;
-  if(Number.isFinite(d.camPhi))camPhi=d.camPhi;
-  if(Number.isFinite(d.camRadius))camRadius=d.camRadius;
-  if(Number.isFinite(d.tx)&&Number.isFinite(d.ty)&&Number.isFinite(d.tz))target.set(d.tx,d.ty,d.tz);
-  // One-time carry-over: older builds stored a single global orientation here. If the active
-  // orchard has no tilt of its own yet, adopt that legacy value, then drop it from the view key.
-  if(world&&(d.rx||d.ry||d.rz)){const cur=curOrchard();
-    if(cur&&cur.orientation&&!cur.orientation.x&&!cur.orientation.y&&!cur.orientation.z){
-      cur.orientation={x:d.rx||0,y:d.ry||0,z:d.rz||0};Store.write(snapshotData());saveViewSettings();}}
+  // One-time carry-over: older builds kept a single global camera/orientation in the view key.
+  // Adopt it for the active orchard if that orchard has no framed view yet, then drop it.
+  const cur=curOrchard();
+  if(cur&&cur.view){const v=cur.view;let seeded=false;
+    if(!Number.isFinite(v.theta)&&!Number.isFinite(v.radius)&&(Number.isFinite(d.camTheta)||Number.isFinite(d.camRadius))){
+      if(Number.isFinite(d.camTheta))v.theta=d.camTheta;
+      if(Number.isFinite(d.camPhi))v.phi=d.camPhi;
+      if(Number.isFinite(d.camRadius))v.radius=d.camRadius;
+      if(Number.isFinite(d.tx)&&Number.isFinite(d.ty)&&Number.isFinite(d.tz)){v.tx=d.tx;v.ty=d.ty;v.tz=d.tz;}
+      seeded=true;}
+    if(!v.rx&&!v.ry&&!v.rz&&(d.rx||d.ry||d.rz)){v.rx=d.rx||0;v.ry=d.ry||0;v.rz=d.rz||0;seeded=true;}
+    if(seeded){Store.write(snapshotData());saveViewSettings();}   // saveViewSettings strips the legacy fields
+  }
   if(typeof d.showLabels==="boolean")showLabels=d.showLabels;
   if(typeof d.showNames==="boolean")showNames=d.showNames;
   if(typeof d.autoWx==="boolean")autoWx=d.autoWx;
@@ -1768,15 +1797,15 @@ function bindCameraControls(){
   el.addEventListener("pointermove",e=>{
     if(reorder.active){const slot=slotAt(e.clientX,e.clientY);if(slot>=0)movePlotToSlot(reorder.plotId,slot);return;}
     if(!dragging)return;const dx=e.clientX-lastX,dy=e.clientY-lastY;lastX=e.clientX;lastY=e.clientY;
-    camTheta-=dx*0.005;camPhi-=dy*0.005;markViewDirty();});
+    camTheta-=dx*0.005;camPhi-=dy*0.005;markOrchardViewDirty();});
   window.addEventListener("pointerup",()=>{
     if(reorder.active){reorder.active=false;reorder.plotId=null;if(reorder.moved){save();renderStats();renderBoard();toast("🔀 Plot moved");}}
-    if(dragging)markViewDirty();dragging=false;});
-  el.addEventListener("wheel",e=>{e.preventDefault();camRadius*=(1+e.deltaY*0.0012);markViewDirty();},{passive:false});
+    if(dragging)flushOrchardView();dragging=false;});
+  el.addEventListener("wheel",e=>{e.preventDefault();camRadius*=(1+e.deltaY*0.0012);markOrchardViewDirty();},{passive:false});
   // touch pinch
   el.addEventListener("touchmove",e=>{if(e.touches.length===2){e.preventDefault();const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
-    if(pinchD)camRadius*=pinchD/d;pinchD=d;markViewDirty();}},{passive:false});
-  el.addEventListener("touchend",()=>{pinchD=0;markViewDirty();});
+    if(pinchD)camRadius*=pinchD/d;pinchD=d;markOrchardViewDirty();}},{passive:false});
+  el.addEventListener("touchend",()=>{pinchD=0;flushOrchardView();});
   // click to select / harvest / plant
   let downX=0,downY=0;
   el.addEventListener("pointerdown",e=>{downX=e.clientX;downY=e.clientY;});
@@ -1964,23 +1993,28 @@ function renderOrchardBar(){
       <button class="obtn add" data-oact="new" title="Add a new orchard">＋ Orchard</button>
     </div>`;
 }
-function switchOrchard(id){if(!state.orchards.some(o=>o.id===id))return;state.currentOrchardId=id;save();
+function switchOrchard(id){if(!state.orchards.some(o=>o.id===id))return;
+  flushOrchardView();   // save the view of the orchard we're leaving before switching away
+  state.currentOrchardId=id;save();
   applyCurrency();updateSeasonHUD();nextWxAt=performance.now()+600;   // the new orchard's own settings take effect
-  // Keep the camera zoom/angle (issue #39), but restore THIS orchard's own saved orientation (issue #43).
-  buildOrchard();applyOrchardOrientation();updateSelectionRings();renderOrchardBar();renderStats();renderBoard();renderPanel();}
+  // Restore THIS orchard's own saved camera view — orbit, zoom and tilt — exactly as left (issues #43, #46).
+  buildOrchard();applyOrchardView();updateSelectionRings();renderOrchardBar();renderStats();renderBoard();renderPanel();}
 function newOrchard(){
   // a fresh orchard starts from a copy of the current one's settings (convenient) but its own empty team
+  flushOrchardView();   // save the current orchard's view before we move focus to the new one
   const o={id:uid(),name:"Orchard "+(state.orchards.length+1),plots:[{id:uid(),tree:null},{id:uid(),tree:null},{id:uid(),tree:null}],selectedPlotId:null,
-    settings:normalizeSettings(curOrchard().settings),team:[],orientation:normalizeOrientation(null)};
+    settings:normalizeSettings(curOrchard().settings),team:[],view:normalizeView(null,null)};
   state.orchards.push(o);state.currentOrchardId=o.id;save();
   applyCurrency();updateSeasonHUD();nextWxAt=performance.now()+600;
-  buildOrchard();fitCamera();applyOrchardOrientation();updateSelectionRings();renderOrchardBar();renderStats();renderBoard();renderPanel();toast("🌳 New orchard added");}
+  // a fresh orchard has no saved view: flatten the tilt, frame it, and record that as its view
+  buildOrchard();applyOrchardView();fitCamera();persistView();updateSelectionRings();renderOrchardBar();renderStats();renderBoard();renderPanel();toast("🌳 New orchard added");}
 function renameOrchard(){const o=curOrchard();const name=prompt("Rename orchard",o.name);
   if(name!==null){o.name=name.trim()||o.name;save();renderOrchardBar();}}
 function deleteOrchard(){if(state.orchards.length<=1)return;const o=curOrchard();
   showConfirm("Delete this orchard?",`“${esc(o.name)}” and all its ventures will be permanently removed.`,()=>{
     state.orchards=state.orchards.filter(x=>x.id!==o.id);state.currentOrchardId=state.orchards[0].id;save();
-    buildOrchard();fitCamera();applyOrchardOrientation();updateSelectionRings();renderOrchardBar();renderStats();renderBoard();renderPanel();closeModal();toast("🗑️ Orchard deleted");});}
+    // restore the remaining orchard's saved view; fitCamera only frames the parts it never set
+    buildOrchard();fitCamera();applyOrchardView();updateSelectionRings();renderOrchardBar();renderStats();renderBoard();renderPanel();closeModal();toast("🗑️ Orchard deleted");});}
 // Moves the selected venture (the tree) into another orchard, filling an empty plot or adding one.
 function moveVentureToOrchard(targetId){
   const plot=selectedPlot();if(!plot||!plot.tree)return;
@@ -2429,7 +2463,7 @@ function importData(file){const fr=new FileReader();fr.onload=()=>{try{const d=J
   if(!d||(!Array.isArray(d.orchards)&&!Array.isArray(d.plots)&&!Array.isArray(d.trees)))throw 0;
   const m=migrateStore(d);   // upgrade the backup to the current schema, whatever version it came from
   state.orchards=m.orchards;state.currentOrchardId=m.currentOrchardId;state.sortBy=m.sortBy;applyCurrency();updateSeasonHUD();save();
-  buildOrchard();fitCamera();applyOrchardOrientation();updateSelectionRings();renderOrchardBar();renderStats();renderBoard();renderPanel();syncSort();toast("⬆️ Imported from file");}
+  buildOrchard();fitCamera();applyOrchardView();updateSelectionRings();renderOrchardBar();renderStats();renderBoard();renderPanel();syncSort();toast("⬆️ Imported from file");}
   catch(e){toast("⚠️ Could not read that file");}};fr.readAsText(file);}
 function resetAll(){showConfirm("Clear this orchard?","Every plot, venture and record in the current orchard will be deleted. Consider a Backup first.",()=>{
   const o=curOrchard();o.plots=[{id:uid(),tree:null},{id:uid(),tree:null},{id:uid(),tree:null}];o.selectedPlotId=null;save();
@@ -2485,15 +2519,12 @@ document.addEventListener("keydown",e=>{
 
 // camera dock
 document.querySelector(".dock.view").addEventListener("click",e=>{const b=e.target.closest("[data-cam]");if(!b)return;const c=b.dataset.cam;
-  let rotated=false;
   if(c==="zin")camRadius*=0.85;else if(c==="zout")camRadius*=1.18;
-  else if(c==="ry+"){world.rotation.y+=Math.PI/12;rotated=true;}else if(c==="ry-"){world.rotation.y-=Math.PI/12;rotated=true;}
-  else if(c==="rx+"){world.rotation.x+=Math.PI/15;rotated=true;}else if(c==="rx-"){world.rotation.x-=Math.PI/15;rotated=true;}
-  else if(c==="rz+"){world.rotation.z+=Math.PI/15;rotated=true;}else if(c==="rz-"){world.rotation.z-=Math.PI/15;rotated=true;}
-  else if(c==="reset"){camTheta=0.7;camPhi=1.02;world.rotation.set(0,0,0);fitCamera();rotated=true;}
-  // tilt changes are saved onto the active orchard; zoom/angle stay in the per-browser view key
-  if(rotated)persistOrientation();
-  markViewDirty();});
+  else if(c==="ry+")world.rotation.y+=Math.PI/12;else if(c==="ry-")world.rotation.y-=Math.PI/12;
+  else if(c==="rx+")world.rotation.x+=Math.PI/15;else if(c==="rx-")world.rotation.x-=Math.PI/15;
+  else if(c==="rz+")world.rotation.z+=Math.PI/15;else if(c==="rz-")world.rotation.z-=Math.PI/15;
+  else if(c==="reset"){camTheta=0.7;camPhi=1.02;world.rotation.set(0,0,0);fitCamera();}
+  persistView();});   // zoom/orbit/tilt all belong to the active orchard's saved view
 document.getElementById("btnLabels").onclick=function(){showLabels=!showLabels;this.classList.toggle("on",showLabels);markViewDirty();};
 document.getElementById("btnNames").onclick=function(){showNames=!showNames;this.classList.toggle("on",showNames);markViewDirty();};
 
@@ -2519,7 +2550,7 @@ document.getElementById("appVer").textContent="v"+APP_VERSION;
 applyCurrency();updateSeasonHUD();
 syncSort();syncTimeSlider();
 renderOrchardBar();renderStats();renderBoard();renderPanel();
-try{initThree();loadViewSettings();applyOrchardOrientation();}catch(err){console.error(err);document.getElementById("canvasWrap").innerHTML='<div style="color:#fff;padding:30px;font-family:sans-serif">3D failed to load. Try opening this file directly in a modern browser (Chrome/Edge/Firefox/Safari).<br><br>'+err+'</div>';}
+try{initThree();loadViewSettings();applyOrchardView();}catch(err){console.error(err);document.getElementById("canvasWrap").innerHTML='<div style="color:#fff;padding:30px;font-family:sans-serif">3D failed to load. Try opening this file directly in a modern browser (Chrome/Edge/Firefox/Safari).<br><br>'+err+'</div>';}
 if(!treesPlots().length)setTimeout(()=>toast("👋 Tap a soil plot to plant your first venture"),600);
 // health & attention drift with real time, so refresh the banner/labels periodically without user input
 setInterval(refreshAttention,30000);
