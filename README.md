@@ -1,6 +1,6 @@
 # 🌳 Orchard Ventures
 
-![version](https://img.shields.io/badge/version-1.7-e8a93a)
+![version](https://img.shields.io/badge/version-1.8-e8a93a)
 
 **Business ventures, gamified.** Turn your business ideas into a 3D orchard — every venture is a fruit tree you grow from seed to harvest.
 
